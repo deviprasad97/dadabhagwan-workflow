@@ -25,7 +25,7 @@ interface TranslationModalProps {
 }
 
 export function TranslationModal({ card, onClose, onSave }: TranslationModalProps) {
-  const [translation, setTranslation] = useState(card.gujaratiTranslation || '');
+  const [translation, setTranslation] = useState(card.metadata?.gujaratiTranslation || '');
   const [isPending, startTransition] = useTransition();
   const { toast } = useToast();
 
@@ -50,7 +50,13 @@ export function TranslationModal({ card, onClose, onSave }: TranslationModalProp
   };
 
   const handleSave = () => {
-    onSave({ ...card, gujaratiTranslation: translation });
+    onSave({ 
+      ...card, 
+      metadata: { 
+        ...card.metadata, 
+        gujaratiTranslation: translation 
+      } 
+    });
     toast({
         title: "Translation Saved",
         description: `The translation for "${card.title}" has been updated.`

@@ -48,12 +48,31 @@ export async function POST(request: NextRequest) {
     // Create formatted content for the card
     const cardContent = formatFormSubmission(formData);
 
-    // Create a card from the form submission
+    // Create a card from the form submission  
     const card: Omit<Card, 'id' | 'createdAt'> = {
       title: cardTitle,
       content: cardContent,
       creatorUid: 'google-forms', // System user for form submissions
       column: 'online_submitted', // All new submissions start here
+      boardId: 'default-board', // Assign to default board
+      updatedAt: new Date().toISOString(),
+      metadata: {
+        source: 'google-forms',
+        submissionTimestamp: timestamp,
+        formData: {
+          email: formData.email,
+          firstname: formData.firstname,
+          lastname: formData.lastname,
+          age: formData.age,
+          gender: formData.gender,
+          city: formData.city,
+          status: formData.status,
+          gnan_vidhi_year: formData.gnanVidhiYear,
+          english_question: formData.englishQuestion,
+          telephone: formData.telephone,
+          remarks: formData.remarks
+        }
+      }
     };
 
     // Save to Firestore

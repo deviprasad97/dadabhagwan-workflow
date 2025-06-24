@@ -39,6 +39,7 @@ export const mockCards: Card[] = [
     creatorUid: 'user-viewer-01',
     column: 'online_submitted',
     createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+    updatedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
   },
   {
     id: 'card-2',
@@ -48,25 +49,32 @@ export const mockCards: Card[] = [
     assigneeUid: 'user-editor-01',
     column: 'translate_gujarati',
     createdAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
+    updatedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
   },
   {
     id: 'card-3',
     title: 'Update Marketing Copy',
     content: 'The marketing team wants to update the homepage tagline from "Build Faster" to "Build Smarter, Not Harder". This needs to be translated for the regional site.',
-    gujaratiTranslation: 'હોમપેજ ટેગલાઇનને "ઝડપી બનાવો" થી "સખત નહીં, સ્માર્ટ બનાવો" માં અપડેટ કરવાની જરૂર છે.',
     creatorUid: 'user-admin-01',
     assigneeUid: 'user-admin-01',
     column: 'checking_gujarati',
     createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+    updatedAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+    metadata: {
+      gujaratiTranslation: 'હોમપેજ ટેગલાઇનને "ઝડપી બનાવો" થી "સખત નહીં, સ્માર્ટ બનાવો" માં અપડેટ કરવાની જરૂર છે.',
+    },
   },
   {
     id: 'card-4',
     title: 'Quarterly Report Graphics',
     content: 'The graphics for the Q3 quarterly report are ready for printing. Please ensure high-quality paper is used.',
-    gujaratiTranslation: 'Q3 ત્રિમાસિક અહેવાલ માટેના ગ્રાફિક્સ છાપવા માટે તૈયાર છે.',
     creatorUid: 'user-editor-01',
     column: 'print',
     createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    metadata: {
+      gujaratiTranslation: 'Q3 ત્રિમાસિક અહેવાલ માટેના ગ્રાફિક્સ છાપવા માટે તૈયાર છે.',
+    },
   },
     {
     id: 'card-5',
@@ -76,6 +84,7 @@ export const mockCards: Card[] = [
     assigneeUid: 'user-editor-01',
     column: 'online_submitted',
     createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
+    updatedAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
   },
   {
     id: 'card-6',
@@ -84,5 +93,6 @@ export const mockCards: Card[] = [
     creatorUid: 'user-editor-01',
     column: 'translate_gujarati',
     createdAt: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString(),
+    updatedAt: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString(),
   },
 ];

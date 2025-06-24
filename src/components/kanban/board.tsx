@@ -19,12 +19,13 @@ import {
 } from '@dnd-kit/sortable';
 import { KanbanColumn } from './column';
 import { KanbanCard } from './card';
-import type { Card, ColumnId, ColumnData, User } from '@/lib/types';
+import { BoardSelector } from './board-selector';
+import type { Card, ColumnId, ColumnData, User, Board } from '@/lib/types';
 import { TranslationModal } from './translation-modal';
 import { CardDetailsModal } from './card-details-modal';
 import { useAuth } from '@/hooks/use-auth';
 import { useToast } from '@/hooks/use-toast';
-import { cardService, userService, seedMockData } from '@/lib/firestore';
+import { cardService, userService, boardService, seedMockData } from '@/lib/firestore';
 
 // Column order for display
 const columnOrder: ColumnId[] = [
@@ -44,7 +45,12 @@ const columnTitles: Record<ColumnId, string> = {
   done: 'Done',
 };
 
-export function KanbanBoard() {
+interface KanbanBoardProps {
+  selectedBoardId?: string | null;
+}
+
+export function KanbanBoard({ selectedBoardId }: KanbanBoardProps) {
+  const [currentBoard, setCurrentBoard] = useState<Board | null>(null);
   const [columns, setColumns] = useState<Record<ColumnId, ColumnData>>({} as any);
   const [users, setUsers] = useState<Record<string, User>>({});
   const [activeCard, setActiveCard] = useState<Card | null>(null);
@@ -62,21 +68,52 @@ export function KanbanBoard() {
     })
   );
 
+  // Initialize default board and seed data
   useEffect(() => {
-    if (!user) {
-      console.log('No user authenticated, skipping board setup');
+    const initializeBoards = async () => {
+      try {
+        // Ensure default board exists
+        await boardService.ensureDefaultBoard();
+        // Seed mock data
+        await seedMockData();
+        
+        // If selectedBoardId is provided, load that board
+        if (selectedBoardId && user) {
+          const board = await boardService.getBoard(selectedBoardId);
+          if (board) {
+            // Check if user has access to this board
+            const hasAccess = await boardService.hasAccess(selectedBoardId, user.uid, user.role);
+            if (hasAccess) {
+              setCurrentBoard(board);
+            } else {
+              toast({
+                variant: 'destructive',
+                title: 'Access Denied',
+                description: 'You do not have access to this board.'
+              });
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error initializing boards:', error);
+      }
+    };
+
+    initializeBoards();
+  }, [selectedBoardId, user, toast]);
+
+  useEffect(() => {
+    if (!user || !currentBoard) {
+      console.log('No user authenticated or board selected, skipping board setup');
       return;
     }
-
-    // Seed mock data on first load
-    seedMockData();
 
     let unsubscribeCards: (() => void) | undefined;
     let unsubscribeUsers: (() => void) | undefined;
 
     try {
-      // Subscribe to real-time card updates
-      unsubscribeCards = cardService.subscribeToCards((cards) => {
+      // Subscribe to real-time card updates for the current board
+      unsubscribeCards = cardService.subscribeToCards(currentBoard.id, (cards) => {
         const initialColumns: Record<ColumnId, ColumnData> = {
           online_submitted: { id: 'online_submitted', title: 'Online Submitted', cards: [] },
           translate_gujarati: { id: 'translate_gujarati', title: 'Translate Gujarati', cards: [] },
@@ -130,11 +167,12 @@ export function KanbanBoard() {
         }
       }
     };
-  }, [user]);
+  }, [user, currentBoard]);
 
   // Test function to verify drag functionality
   const testDragFunctionality = () => {
     console.log('=== DRAG TEST ===');
+    console.log('Current board:', currentBoard?.name);
     console.log('Columns:', Object.keys(columns));
     console.log('User role:', user?.role);
     console.log('Cards available:', Object.values(columns).flatMap(col => col.cards).length);
@@ -146,7 +184,13 @@ export function KanbanBoard() {
     if (user && Object.keys(columns).length > 0) {
       testDragFunctionality();
     }
-  }, [user, columns]);
+  }, [user, columns, currentBoard]);
+
+  const handleBoardChange = (board: Board) => {
+    setCurrentBoard(board);
+    // Clear current data to show loading state
+    setColumns({} as any);
+  };
 
   const handleDragStart = (event: DragStartEvent) => {
     console.log('=== DRAG START ===');
@@ -307,45 +351,68 @@ export function KanbanBoard() {
   };
 
   return (
-    <>
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCenter}
-        onDragStart={handleDragStart}
-        onDragEnd={handleDragEnd}
-      >
-        <div className="flex gap-4 md:gap-6 h-full w-full">
-          {columnOrder.map((columnId) => {
-            const column = columns[columnId];
-            if (!column) return null;
-            
-            return (
-              <KanbanColumn
-                key={columnId}
-                column={column}
-                users={users}
-                openTranslationModal={setCardForTranslation}
-                onCardClick={handleCardClick}
-              />
-            );
-          })}
-        </div>
+    <div className="flex flex-col h-full">
+      {/* Board Selector */}
+      <div className="mb-6">
+        <BoardSelector
+          currentBoard={currentBoard}
+          onBoardChange={handleBoardChange}
+        />
+      </div>
 
-        <DragOverlay>
-          {activeCard ? (
-            <div className="rotate-3 opacity-90">
-              <KanbanCard
-                card={activeCard}
-                user={users[activeCard.creatorUid]}
-                assignee={activeCard.assigneeUid ? users[activeCard.assigneeUid] : undefined}
-                isDragging={true}
-                openTranslationModal={setCardForTranslation}
-              />
+      {/* Kanban Board */}
+      {currentBoard ? (
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+        >
+          <div className="flex gap-4 md:gap-6 h-full w-full">
+            {columnOrder.map((columnId) => {
+              const column = columns[columnId];
+              if (!column) return null;
+              
+              return (
+                <KanbanColumn
+                  key={columnId}
+                  column={column}
+                  users={users}
+                  openTranslationModal={setCardForTranslation}
+                  onCardClick={handleCardClick}
+                />
+              );
+            })}
+          </div>
+
+          <DragOverlay>
+            {activeCard ? (
+              <div className="rotate-3 opacity-90">
+                <KanbanCard
+                  card={activeCard}
+                  user={users[activeCard.creatorUid]}
+                  assignee={activeCard.assigneeUid ? users[activeCard.assigneeUid] : undefined}
+                  isDragging={true}
+                  openTranslationModal={setCardForTranslation}
+                />
+              </div>
+            ) : null}
+          </DragOverlay>
+        </DndContext>
+      ) : (
+        <div className="flex items-center justify-center h-full">
+          <div className="text-center">
+            <div className="text-lg font-medium text-muted-foreground mb-2">
+              No board selected
             </div>
-          ) : null}
-        </DragOverlay>
-      </DndContext>
+            <div className="text-sm text-muted-foreground">
+              Please select a board from the dropdown above to view cards.
+            </div>
+          </div>
+        </div>
+      )}
 
+      {/* Modals */}
       {cardForTranslation && (
         <TranslationModal
           card={cardForTranslation}
@@ -364,6 +431,6 @@ export function KanbanBoard() {
           onSave={handleUpdateCard}
         />
       )}
-    </>
+    </div>
   );
 }

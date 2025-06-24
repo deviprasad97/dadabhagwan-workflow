@@ -15,20 +15,41 @@ import {
   type DocumentData,
   type QuerySnapshot,
   type Unsubscribe,
-  writeBatch
+  writeBatch,
+  arrayUnion,
+  arrayRemove
 } from 'firebase/firestore';
 import { firestore } from './firebase';
-import type { Card, User, ColumnId } from './types';
+import type { Card, User, ColumnId, Board } from './types';
 import { mockUsers } from './mock-data';
 
 // Collections
 const CARDS_COLLECTION = 'cards';
 const USERS_COLLECTION = 'users';
+const BOARDS_COLLECTION = 'boards';
 const AUDIT_COLLECTION = 'audit_logs';
+
+// Default board ID for migration
+const DEFAULT_BOARD_ID = 'default-board';
 
 // Seed database with mock data if empty
 export const seedMockData = async (): Promise<void> => {
   try {
+    // Ensure default board exists first
+    const defaultBoard = await boardService.getBoard(DEFAULT_BOARD_ID);
+    if (!defaultBoard) {
+      await setDoc(doc(firestore, BOARDS_COLLECTION, DEFAULT_BOARD_ID), {
+        name: 'Main Board',
+        description: 'Default board for all questions',
+        creatorUid: 'system',
+        isDefault: true,
+        sharedWith: [],
+        settings: {},
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    }
+    
     // Always ensure the system user exists
     const systemUser = mockUsers.find(u => u.uid === 'google-forms');
     if (systemUser) {
@@ -60,6 +81,7 @@ export const seedMockData = async (): Promise<void> => {
           content: card.content,
           creatorUid: card.creatorUid,
           column: card.column,
+          boardId: card.boardId || DEFAULT_BOARD_ID,
           createdAt: card.createdAt,
           updatedAt: card.updatedAt,
         };
@@ -87,12 +109,22 @@ export const seedMockData = async (): Promise<void> => {
 
 // Card operations
 export const cardService = {
-  // Get all cards with real-time updates
-  subscribeToCards: (callback: (cards: Card[]) => void): Unsubscribe => {
-    const q = query(
-      collection(firestore, CARDS_COLLECTION),
-      orderBy('createdAt', 'desc')
-    );
+  // Get all cards with real-time updates (filtered by board)
+  subscribeToCards: (boardId?: string, callback?: (cards: Card[]) => void): Unsubscribe => {
+    let q;
+    
+    if (boardId) {
+      q = query(
+        collection(firestore, CARDS_COLLECTION),
+        where('boardId', '==', boardId),
+        orderBy('createdAt', 'desc')
+      );
+    } else {
+      q = query(
+        collection(firestore, CARDS_COLLECTION),
+        orderBy('createdAt', 'desc')
+      );
+    }
     
     return onSnapshot(q, (snapshot: QuerySnapshot<DocumentData>) => {
       const cards: Card[] = [];
@@ -105,16 +137,17 @@ export const cardService = {
           creatorUid: data.creatorUid,
           assigneeUid: data.assigneeUid,
           column: data.column,
+          boardId: data.boardId || DEFAULT_BOARD_ID, // Migration support
           createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
           updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt || data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
           metadata: data.metadata,
         });
       });
-      callback(cards);
+      callback?.(cards);
     }, (error) => {
       console.error('Error in cards subscription:', error);
       // Return empty array on error to prevent UI crashes
-      callback([]);
+      callback?.([]);
     });
   },
 
@@ -122,6 +155,7 @@ export const cardService = {
   addCard: async (card: Omit<Card, 'id' | 'createdAt'>): Promise<string> => {
     const docRef = await addDoc(collection(firestore, CARDS_COLLECTION), {
       ...card,
+      boardId: card.boardId || DEFAULT_BOARD_ID,
       createdAt: serverTimestamp(),
     });
     return docRef.id;
@@ -171,13 +205,24 @@ export const cardService = {
     await deleteDoc(cardRef);
   },
 
-  // Get cards by column
-  getCardsByColumn: async (column: ColumnId): Promise<Card[]> => {
-    const q = query(
-      collection(firestore, CARDS_COLLECTION),
-      where('column', '==', column),
-      orderBy('createdAt', 'desc')
-    );
+  // Get cards by column and board
+  getCardsByColumn: async (column: ColumnId, boardId?: string): Promise<Card[]> => {
+    let q;
+    
+    if (boardId) {
+      q = query(
+        collection(firestore, CARDS_COLLECTION),
+        where('column', '==', column),
+        where('boardId', '==', boardId),
+        orderBy('createdAt', 'desc')
+      );
+    } else {
+      q = query(
+        collection(firestore, CARDS_COLLECTION),
+        where('column', '==', column),
+        orderBy('createdAt', 'desc')
+      );
+    }
     
     const snapshot = await getDocs(q);
     const cards: Card[] = [];
@@ -190,6 +235,7 @@ export const cardService = {
         creatorUid: data.creatorUid,
         assigneeUid: data.assigneeUid,
         column: data.column,
+        boardId: data.boardId || DEFAULT_BOARD_ID, // Migration support
         createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
         updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt || data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
         metadata: data.metadata,
@@ -310,6 +356,213 @@ export const auditService = {
   },
 };
 
+// Board operations
+export const boardService = {
+  // Create a new board
+  createBoard: async (board: Omit<Board, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> => {
+    const docRef = await addDoc(collection(firestore, BOARDS_COLLECTION), {
+      ...board,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+    return docRef.id;
+  },
+
+  // Get board by ID
+  getBoard: async (boardId: string): Promise<Board | null> => {
+    const boardRef = doc(firestore, BOARDS_COLLECTION, boardId);
+    const boardSnap = await getDoc(boardRef);
+    
+    if (boardSnap.exists()) {
+      const data = boardSnap.data();
+      return {
+        id: boardSnap.id,
+        name: data.name,
+        description: data.description,
+        creatorUid: data.creatorUid,
+        isDefault: data.isDefault,
+        sharedWith: data.sharedWith || [],
+        settings: data.settings || {},
+        createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+        updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt || data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+      };
+    }
+    return null;
+  },
+
+  // Get boards accessible to a user
+  getUserBoards: async (userId: string, userRole: 'Admin' | 'Editor' | 'Viewer'): Promise<Board[]> => {
+    let q;
+    
+    if (userRole === 'Admin') {
+      // Admins can see all boards
+      q = query(collection(firestore, BOARDS_COLLECTION), orderBy('createdAt', 'desc'));
+    } else {
+      // Editors and Viewers can only see boards they created or boards shared with them
+      q = query(
+        collection(firestore, BOARDS_COLLECTION),
+        where('creatorUid', '==', userId),
+        orderBy('createdAt', 'desc')
+      );
+    }
+    
+    const snapshot = await getDocs(q);
+    const boards: Board[] = [];
+    
+    snapshot.forEach((doc) => {
+      const data = doc.data();
+      const board: Board = {
+        id: doc.id,
+        name: data.name,
+        description: data.description,
+        creatorUid: data.creatorUid,
+        isDefault: data.isDefault,
+        sharedWith: data.sharedWith || [],
+        settings: data.settings || {},
+        createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+        updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt || data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+      };
+      
+      // For non-admins, also check if board is shared with them
+      if (userRole !== 'Admin' && data.creatorUid !== userId && !data.sharedWith?.includes(userId)) {
+        return; // Skip boards not accessible to this user
+      }
+      
+      boards.push(board);
+    });
+
+    // For non-admins, also get boards shared with them
+    if (userRole !== 'Admin') {
+      const sharedQuery = query(
+        collection(firestore, BOARDS_COLLECTION),
+        where('sharedWith', 'array-contains', userId),
+        orderBy('createdAt', 'desc')
+      );
+      
+      const sharedSnapshot = await getDocs(sharedQuery);
+      sharedSnapshot.forEach((doc) => {
+        const data = doc.data();
+        // Avoid duplicates (in case user is both creator and in sharedWith)
+        if (!boards.find(b => b.id === doc.id)) {
+          boards.push({
+            id: doc.id,
+            name: data.name,
+            description: data.description,
+            creatorUid: data.creatorUid,
+            isDefault: data.isDefault,
+            sharedWith: data.sharedWith || [],
+            settings: data.settings || {},
+            createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+            updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt || data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+          });
+        }
+      });
+    }
+    
+    return boards;
+  },
+
+  // Subscribe to boards accessible to a user
+  subscribeToBoardsForUser: (userId: string, userRole: 'Admin' | 'Editor' | 'Viewer', callback: (boards: Board[]) => void): Unsubscribe => {
+    // For simplicity, we'll use polling approach or you can implement complex real-time queries
+    const fetchBoards = async () => {
+      try {
+        const boards = await boardService.getUserBoards(userId, userRole);
+        callback(boards);
+      } catch (error) {
+        console.error('Error fetching boards:', error);
+        callback([]);
+      }
+    };
+
+    // Initial fetch
+    fetchBoards();
+
+    // Set up real-time subscription for boards collection
+    const q = query(collection(firestore, BOARDS_COLLECTION));
+    return onSnapshot(q, () => {
+      fetchBoards(); // Refetch when any board changes
+    }, (error) => {
+      console.error('Error in boards subscription:', error);
+      callback([]);
+    });
+  },
+
+  // Update a board
+  updateBoard: async (boardId: string, updates: Partial<Board>): Promise<void> => {
+    const boardRef = doc(firestore, BOARDS_COLLECTION, boardId);
+    const updateData = {
+      ...updates,
+      updatedAt: serverTimestamp(),
+    };
+    await updateDoc(boardRef, updateData);
+  },
+
+  // Share board with users
+  shareBoard: async (boardId: string, userIds: string[]): Promise<void> => {
+    const boardRef = doc(firestore, BOARDS_COLLECTION, boardId);
+    await updateDoc(boardRef, {
+      sharedWith: arrayUnion(...userIds),
+      updatedAt: serverTimestamp(),
+    });
+  },
+
+  // Unshare board from users
+  unshareBoard: async (boardId: string, userIds: string[]): Promise<void> => {
+    const boardRef = doc(firestore, BOARDS_COLLECTION, boardId);
+    await updateDoc(boardRef, {
+      sharedWith: arrayRemove(...userIds),
+      updatedAt: serverTimestamp(),
+    });
+  },
+
+  // Delete a board
+  deleteBoard: async (boardId: string): Promise<void> => {
+    const boardRef = doc(firestore, BOARDS_COLLECTION, boardId);
+    await deleteDoc(boardRef);
+  },
+
+  // Check if user has access to board
+  hasAccess: async (boardId: string, userId: string, userRole: 'Admin' | 'Editor' | 'Viewer'): Promise<boolean> => {
+    if (userRole === 'Admin') return true;
+    
+    const board = await boardService.getBoard(boardId);
+    if (!board) return false;
+    
+    return board.creatorUid === userId || board.sharedWith.includes(userId);
+  },
+
+  // Get user's access level to board
+  getUserAccessLevel: async (boardId: string, userId: string, userRole: 'Admin' | 'Editor' | 'Viewer'): Promise<'owner' | 'shared' | 'admin' | null> => {
+    if (userRole === 'Admin') return 'admin';
+    
+    const board = await boardService.getBoard(boardId);
+    if (!board) return null;
+    
+    if (board.creatorUid === userId) return 'owner';
+    if (board.sharedWith.includes(userId)) return 'shared';
+    
+    return null;
+  },
+
+  // Create default board if it doesn't exist
+  ensureDefaultBoard: async (): Promise<void> => {
+    const defaultBoard = await boardService.getBoard(DEFAULT_BOARD_ID);
+    if (!defaultBoard) {
+      await setDoc(doc(firestore, BOARDS_COLLECTION, DEFAULT_BOARD_ID), {
+        name: 'Main Board',
+        description: 'Default board for all questions',
+        creatorUid: 'system',
+        isDefault: true,
+        sharedWith: [],
+        settings: {},
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    }
+  },
+};
+
 // Create mock cards with realistic data
 const mockCards: Card[] = [
   {
@@ -333,6 +586,7 @@ What is the difference between ego and pride? How can I identify when I am actin
     updatedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
     creatorUid: 'google-forms',
     assigneeUid: 'user-2',
+    boardId: DEFAULT_BOARD_ID,
     metadata: {
       source: 'google-forms',
       priority: 'Medium',

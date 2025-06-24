@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { BookOpenCheck, LogOut, Shield, Home } from 'lucide-react';
+import { BookOpenCheck, LogOut, Shield, Home, Grid3X3 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 
@@ -27,6 +27,8 @@ export function Header() {
 
   const isAdmin = user.role === 'Admin';
   const isOnAdminPage = pathname === '/admin';
+  const isOnBoardsPage = pathname === '/boards';
+  const isOnHomePage = pathname === '/';
 
   const getInitials = (name: string) => {
     return name
@@ -54,26 +56,38 @@ export function Header() {
       </div>
 
       <div className="flex items-center gap-4">
-        {/* Admin Navigation */}
-        {isAdmin && (
-          <div className="flex items-center gap-2">
-            {!isOnAdminPage ? (
-              <Button variant="outline" size="sm" asChild>
-                <Link href="/admin" className="flex items-center gap-2">
-                  <Shield className="h-4 w-4" />
-                  Admin Dashboard
-                </Link>
-              </Button>
-            ) : (
-              <Button variant="outline" size="sm" asChild>
-                <Link href="/" className="flex items-center gap-2">
-                  <Home className="h-4 w-4" />
-                  Back to Kanban
-                </Link>
-              </Button>
-            )}
-          </div>
-        )}
+        {/* Navigation */}
+        <div className="flex items-center gap-2">
+          {/* Boards Page Link */}
+          {!isOnBoardsPage && (
+            <Button variant="outline" size="sm" asChild>
+              <Link href="/boards" className="flex items-center gap-2">
+                <Grid3X3 className="h-4 w-4" />
+                All Boards
+              </Link>
+            </Button>
+          )}
+          
+          {/* Home Page Link */}
+          {!isOnHomePage && (
+            <Button variant="outline" size="sm" asChild>
+              <Link href="/" className="flex items-center gap-2">
+                <Home className="h-4 w-4" />
+                Kanban Board
+              </Link>
+            </Button>
+          )}
+          
+          {/* Admin Navigation */}
+          {isAdmin && !isOnAdminPage && (
+            <Button variant="outline" size="sm" asChild>
+              <Link href="/admin" className="flex items-center gap-2">
+                <Shield className="h-4 w-4" />
+                Admin Dashboard
+              </Link>
+            </Button>
+          )}
+        </div>
 
         {/* User Dropdown */}
         <DropdownMenu>
@@ -97,30 +111,38 @@ export function Header() {
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             
-            {/* Admin Dashboard Link */}
-            {isAdmin && !isOnAdminPage && (
-              <>
-                <DropdownMenuItem asChild>
-                  <Link href="/admin" className="flex items-center">
-                    <Shield className="mr-2 h-4 w-4" />
-                    <span>Admin Dashboard</span>
-                  </Link>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-              </>
+            {/* All Boards Link */}
+            {!isOnBoardsPage && (
+              <DropdownMenuItem asChild>
+                <Link href="/boards" className="flex items-center">
+                  <Grid3X3 className="mr-2 h-4 w-4" />
+                  <span>All Boards</span>
+                </Link>
+              </DropdownMenuItem>
             )}
             
-            {/* Back to Kanban Link */}
-            {isOnAdminPage && (
-              <>
-                <DropdownMenuItem asChild>
-                  <Link href="/" className="flex items-center">
-                    <Home className="mr-2 h-4 w-4" />
-                    <span>Back to Kanban</span>
-                  </Link>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-              </>
+            {/* Kanban Board Link */}
+            {!isOnHomePage && (
+              <DropdownMenuItem asChild>
+                <Link href="/" className="flex items-center">
+                  <Home className="mr-2 h-4 w-4" />
+                  <span>Kanban Board</span>
+                </Link>
+              </DropdownMenuItem>
+            )}
+            
+            {/* Admin Dashboard Link */}
+            {isAdmin && !isOnAdminPage && (
+              <DropdownMenuItem asChild>
+                <Link href="/admin" className="flex items-center">
+                  <Shield className="mr-2 h-4 w-4" />
+                  <span>Admin Dashboard</span>
+                </Link>
+              </DropdownMenuItem>
+            )}
+            
+            {((!isOnBoardsPage) || (!isOnHomePage) || (isAdmin && !isOnAdminPage)) && (
+              <DropdownMenuSeparator />
             )}
 
             <DropdownMenuItem onClick={logout}>
