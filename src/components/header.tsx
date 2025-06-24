@@ -11,7 +11,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
-import { BookOpenCheck, LogOut } from 'lucide-react';
+import { BookOpenCheck, LogOut, Users } from 'lucide-react';
+import Link from 'next/link';
 
 export function Header() {
   const { user, logout } = useAuth();
@@ -31,7 +32,7 @@ export function Header() {
     <header className="flex h-16 items-center justify-between border-b bg-card px-4 md:px-6">
       <div className="flex items-center gap-3">
         <BookOpenCheck className="h-8 w-8 text-primary" />
-        <h1 className="text-xl font-bold font-headline text-foreground">FormFlow Kanban</h1>
+        <h1 className="text-xl font-bold font-headline text-foreground">DadaBhagwan - Gujarati Question Bank</h1>
       </div>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
@@ -50,6 +51,17 @@ export function Header() {
             </div>
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
+          {user.role === 'Admin' && (
+            <>
+              <DropdownMenuItem asChild>
+                <Link href="/admin" className="flex items-center">
+                  <Users className="mr-2 h-4 w-4" />
+                  <span>User Management</span>
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+            </>
+          )}
           <DropdownMenuItem onClick={logout}>
             <LogOut className="mr-2 h-4 w-4" />
             <span>Log out</span>

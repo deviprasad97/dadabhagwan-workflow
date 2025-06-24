@@ -15,10 +15,11 @@ import {
   type DocumentData,
   type QuerySnapshot,
   type Unsubscribe,
+  writeBatch
 } from 'firebase/firestore';
 import { firestore } from './firebase';
 import type { Card, User, ColumnId } from './types';
-import { mockCards, mockUsers } from './mock-data';
+import { mockUsers } from './mock-data';
 
 // Collections
 const CARDS_COLLECTION = 'cards';
@@ -52,26 +53,27 @@ export const seedMockData = async (): Promise<void> => {
         });
       }
       
-      // Add mock cards (filter out undefined values)
+      // Add mock cards
       for (const card of mockCards) {
         const cardData: any = {
           title: card.title,
           content: card.content,
           creatorUid: card.creatorUid,
           column: card.column,
-          createdAt: serverTimestamp(),
+          createdAt: card.createdAt,
+          updatedAt: card.updatedAt,
         };
         
         // Only add fields that are not undefined
-        if (card.gujaratiTranslation !== undefined) {
-          cardData.gujaratiTranslation = card.gujaratiTranslation;
-        }
-        
         if (card.assigneeUid !== undefined) {
           cardData.assigneeUid = card.assigneeUid;
         }
         
-        await addDoc(collection(firestore, CARDS_COLLECTION), cardData);
+        if (card.metadata !== undefined) {
+          cardData.metadata = card.metadata;
+        }
+        
+        await setDoc(doc(firestore, CARDS_COLLECTION, card.id), cardData);
       }
       
       console.log('Mock data seeded successfully!');
@@ -100,11 +102,12 @@ export const cardService = {
           id: doc.id,
           title: data.title,
           content: data.content,
-          gujaratiTranslation: data.gujaratiTranslation,
           creatorUid: data.creatorUid,
           assigneeUid: data.assigneeUid,
           column: data.column,
           createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+          updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt || data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+          metadata: data.metadata,
         });
       });
       callback(cards);
@@ -124,13 +127,23 @@ export const cardService = {
     return docRef.id;
   },
 
-  // Update a card
-  updateCard: async (cardId: string, updates: Partial<Card>): Promise<void> => {
-    const cardRef = doc(firestore, CARDS_COLLECTION, cardId);
-    await updateDoc(cardRef, {
-      ...updates,
-      updatedAt: serverTimestamp(),
-    });
+  /**
+   * Update a card
+   */
+  updateCard: async (cardId: string, updates: Partial<Card>) => {
+    try {
+      const cardRef = doc(firestore, CARDS_COLLECTION, cardId);
+      const updateData = {
+        ...updates,
+        updatedAt: new Date().toISOString()
+      };
+      
+      await updateDoc(cardRef, updateData);
+      console.log('Card updated successfully:', cardId);
+    } catch (error) {
+      console.error('Error updating card:', error);
+      throw error;
+    }
   },
 
   // Move a card to a different column
@@ -174,11 +187,12 @@ export const cardService = {
         id: doc.id,
         title: data.title,
         content: data.content,
-        gujaratiTranslation: data.gujaratiTranslation,
         creatorUid: data.creatorUid,
         assigneeUid: data.assigneeUid,
         column: data.column,
         createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+        updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt || data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+        metadata: data.metadata,
       });
     });
     return cards;
@@ -294,4 +308,202 @@ export const auditService = {
     });
     return logs;
   },
-}; 
+};
+
+// Create mock cards with realistic data
+const mockCards: Card[] = [
+  {
+    id: 'card-1',
+    title: 'Rajesh Patel',
+    content: `📧 **Contact Information**
+Email: rajesh.patel@example.com
+Phone: +91-9876543210
+
+👤 **Personal Details**
+Age: 35 • Gender: Male • City: Ahmedabad
+
+🙏 **Spiritual Information**
+Status: Married
+Gnan Vidhi Year: 2018
+
+❓ **Question**
+What is the difference between ego and pride? How can I identify when I am acting from ego versus genuine confidence?`,
+    column: 'online_submitted',
+    createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+    updatedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+    creatorUid: 'google-forms',
+    assigneeUid: 'user-2',
+    metadata: {
+      source: 'google-forms',
+      priority: 'Medium',
+      topic: 'Ego and Pride',
+      formData: {
+        email: 'rajesh.patel@example.com',
+        firstname: 'Rajesh',
+        lastname: 'Patel',
+        age: '35',
+        gender: 'Male',
+        city: 'Ahmedabad',
+        status: 'Married',
+        gnan_vidhi_year: '2018',
+        english_question: 'What is the difference between ego and pride? How can I identify when I am acting from ego versus genuine confidence?',
+        telephone: '+91-9876543210'
+      }
+    }
+  },
+  {
+    id: 'card-2',
+    title: 'Priya Shah',
+    content: `📧 **Contact Information**
+Email: priya.shah@example.com
+
+👤 **Personal Details**
+Age: 28 • Gender: Female • City: Mumbai
+
+🙏 **Spiritual Information**
+Status: Single
+Gnan Vidhi Year: 2020
+
+❓ **Question**
+How can I maintain equanimity during difficult family situations? I find myself getting reactive and losing my peace.`,
+    column: 'translate_gujarati',
+    createdAt: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(),
+    updatedAt: new Date(Date.now() - 1 * 60 * 60 * 1000).toISOString(),
+    creatorUid: 'google-forms',
+    assigneeUid: 'user-2',
+    metadata: {
+      source: 'google-forms',
+      priority: 'High',
+      topic: 'Equanimity',
+      formData: {
+        email: 'priya.shah@example.com',
+        firstname: 'Priya',
+        lastname: 'Shah',
+        age: '28',
+        gender: 'Female',
+        city: 'Mumbai',
+        status: 'Single',
+        gnan_vidhi_year: '2020',
+        english_question: 'How can I maintain equanimity during difficult family situations? I find myself getting reactive and losing my peace.'
+      }
+    }
+  },
+  {
+    id: 'card-3',
+    title: 'Amit Desai',
+    content: `📧 **Contact Information**
+Email: amit.desai@example.com
+Phone: +91-9123456789
+
+👤 **Personal Details**
+Age: 42 • Gender: Male • City: Surat
+
+🙏 **Spiritual Information**
+Status: Married
+Gnan Vidhi Year: 2015
+
+❓ **Question**
+What is the role of karma in daily life? How should I understand when something is happening due to my past karma versus current actions?
+
+📝 **Additional Notes**
+This question has been bothering me for a while. I would appreciate a detailed explanation.`,
+    column: 'checking_gujarati',
+    createdAt: new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString(),
+    updatedAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+    creatorUid: 'google-forms',
+    assigneeUid: 'user-1',
+    metadata: {
+      source: 'google-forms',
+      priority: 'Low',
+      topic: 'Karma',
+      formData: {
+        email: 'amit.desai@example.com',
+        firstname: 'Amit',
+        lastname: 'Desai',
+        age: '42',
+        gender: 'Male',
+        city: 'Surat',
+        status: 'Married',
+        gnan_vidhi_year: '2015',
+        english_question: 'What is the role of karma in daily life? How should I understand when something is happening due to my past karma versus current actions?',
+        telephone: '+91-9123456789',
+        remarks: 'This question has been bothering me for a while. I would appreciate a detailed explanation.'
+      }
+    }
+  },
+  {
+    id: 'card-4',
+    title: 'Neha Joshi',
+    content: `📧 **Contact Information**
+Email: neha.joshi@example.com
+
+👤 **Personal Details**
+Age: 31 • Gender: Female • City: Pune
+
+🙏 **Spiritual Information**
+Status: Married
+Gnan Vidhi Year: 2019
+
+❓ **Question**
+How can I practice true forgiveness? I understand it intellectually but find it difficult to forgive from the heart.`,
+    column: 'print',
+    createdAt: new Date(Date.now() - 8 * 60 * 60 * 1000).toISOString(),
+    updatedAt: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
+    creatorUid: 'google-forms',
+    assigneeUid: 'user-3',
+    metadata: {
+      source: 'google-forms',
+      priority: 'Urgent',
+      topic: 'Forgiveness',
+      formData: {
+        email: 'neha.joshi@example.com',
+        firstname: 'Neha',
+        lastname: 'Joshi',
+        age: '31',
+        gender: 'Female',
+        city: 'Pune',
+        status: 'Married',
+        gnan_vidhi_year: '2019',
+        english_question: 'How can I practice true forgiveness? I understand it intellectually but find it difficult to forgive from the heart.'
+      }
+    }
+  },
+  {
+    id: 'card-5',
+    title: 'Kiran Mehta',
+    content: `📧 **Contact Information**
+Email: kiran.mehta@example.com
+Phone: +91-9876123450
+
+👤 **Personal Details**
+Age: 55 • Gender: Male • City: Rajkot
+
+🙏 **Spiritual Information**
+Status: Married
+Gnan Vidhi Year: 2012
+
+❓ **Question**
+What is the meaning of true happiness? How is it different from temporary pleasures and satisfaction?`,
+    column: 'done',
+    createdAt: new Date(Date.now() - 10 * 60 * 60 * 1000).toISOString(),
+    updatedAt: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
+    creatorUid: 'google-forms',
+    assigneeUid: 'user-1',
+    metadata: {
+      source: 'google-forms',
+      topic: 'Happiness',
+      formData: {
+        email: 'kiran.mehta@example.com',
+        firstname: 'Kiran',
+        lastname: 'Mehta',
+        age: '55',
+        gender: 'Male',
+        city: 'Rajkot',
+        status: 'Married',
+        gnan_vidhi_year: '2012',
+        english_question: 'What is the meaning of true happiness? How is it different from temporary pleasures and satisfaction?',
+        telephone: '+91-9876123450'
+      }
+    }
+  }
+]; 

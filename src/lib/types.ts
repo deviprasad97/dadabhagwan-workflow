@@ -11,12 +11,18 @@ export type ColumnId = 'online_submitted' | 'translate_gujarati' | 'checking_guj
 export type Card = {
   id: string;
   title: string;
-  content: string; // The English text from the form
-  gujaratiTranslation?: string; // The translated text
-  creatorUid: string;
-  assigneeUid?: string;
   column: ColumnId;
+  assigneeUid: string | null;
+  creatorUid: string;
+  metadata?: {
+    priority?: 'Low' | 'Medium' | 'High' | 'Urgent';
+    topic?: string;
+    gujaratiTranslation?: string;
+    approvedTranslation?: string;
+    formData?: Record<string, any>;
+  };
   createdAt: string;
+  updatedAt: string;
 };
 
 export type ColumnData = {

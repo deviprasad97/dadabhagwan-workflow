@@ -57,7 +57,7 @@ export default function Home() {
         <div className="flex items-center gap-4 mb-6">
           <BookOpenCheck className="h-12 w-12 text-primary" />
           <h1 className="text-5xl font-headline font-bold text-primary-foreground bg-primary px-4 py-2 rounded-lg">
-            FormFlow Kanban
+            DadaBhagwan - Gujarati Question Bank
           </h1>
         </div>
         <p className="text-muted-foreground mb-8 max-w-md">

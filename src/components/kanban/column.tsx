@@ -12,9 +12,10 @@ interface KanbanColumnProps {
   column: ColumnData;
   users: Record<string, User>;
   openTranslationModal: (card: Card) => void;
+  onCardClick?: (card: Card) => void;
 }
 
-export function KanbanColumn({ column, users, openTranslationModal }: KanbanColumnProps) {
+export function KanbanColumn({ column, users, openTranslationModal, onCardClick }: KanbanColumnProps) {
   const { user } = useAuth();
   const canDrop = user?.role !== 'Viewer';
 
@@ -63,6 +64,7 @@ export function KanbanColumn({ column, users, openTranslationModal }: KanbanColu
                 user={creator}
                 assignee={assignee}
                 openTranslationModal={openTranslationModal}
+                onCardClick={onCardClick}
               />
             );
           })}

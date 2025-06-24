@@ -4,8 +4,8 @@ import { AuthProvider } from '@/providers/auth-provider';
 import { Toaster } from '@/components/ui/toaster';
 
 export const metadata: Metadata = {
-  title: 'FormFlow Kanban',
-  description: 'Process Google Form submissions on a real-time Kanban board.',
+  title: 'DadaBhagwan - Gujarati Question Bank',
+  description: 'DadaBhagwan - Gujarati Question Bank',
 };
 
 export default function RootLayout({

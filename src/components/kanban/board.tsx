@@ -21,6 +21,7 @@ import { KanbanColumn } from './column';
 import { KanbanCard } from './card';
 import type { Card, ColumnId, ColumnData, User } from '@/lib/types';
 import { TranslationModal } from './translation-modal';
+import { CardDetailsModal } from './card-details-modal';
 import { useAuth } from '@/hooks/use-auth';
 import { useToast } from '@/hooks/use-toast';
 import { cardService, userService, seedMockData } from '@/lib/firestore';
@@ -48,6 +49,7 @@ export function KanbanBoard() {
   const [users, setUsers] = useState<Record<string, User>>({});
   const [activeCard, setActiveCard] = useState<Card | null>(null);
   const [cardForTranslation, setCardForTranslation] = useState<Card | null>(null);
+  const [cardForDetails, setCardForDetails] = useState<Card | null>(null);
   const { user } = useAuth();
   const { toast } = useToast();
 
@@ -161,71 +163,22 @@ export function KanbanBoard() {
   };
 
   const handleDragEnd = async (event: DragEndEvent) => {
-    console.log('=== DRAG END ===');
-    console.log('Full event:', event);
-    
     const { active, over } = event;
     
-    console.log('Active:', active);
-    console.log('Over:', over);
-    
-    if (!active || !over || !user) {
-      console.log('Drag end cancelled - missing:', { 
-        active: !!active, 
-        over: !!over, 
-        user: !!user 
-      });
+    if (!active || !over || active.id === over.id || !user) {
       setActiveCard(null);
       return;
     }
 
     const cardId = active.id as string;
-    const overId = over.id as string;
+    const targetColumnId = over.id as ColumnId;
     
-    console.log('Dragging card:', cardId, 'Over:', overId);
-    
-    // Find the current card
     const currentCard = Object.values(columns)
       .flatMap(col => col.cards)
       .find(c => c.id === cardId);
 
     if (!currentCard) {
-      console.warn('Card not found:', cardId);
-      setActiveCard(null);
-      return;
-    }
-
-    console.log('Current card:', currentCard);
-    console.log('Available columns:', columnOrder);
-
-    // Determine target column
-    let targetColumnId: ColumnId;
-    
-    // Check if dropping directly on a column
-    if (columnOrder.includes(overId as ColumnId)) {
-      targetColumnId = overId as ColumnId;
-      console.log('Dropping directly on column:', targetColumnId);
-    } else {
-      // If dropping on a card, find which column that card belongs to
-      const targetCard = Object.values(columns)
-        .flatMap(col => col.cards)
-        .find(c => c.id === overId);
-      
-      if (targetCard) {
-        targetColumnId = targetCard.column;
-        console.log('Dropping on card, target column:', targetColumnId);
-      } else {
-        console.warn('Could not determine target column for:', overId);
-        setActiveCard(null);
-        return;
-      }
-    }
-
-    console.log('Target column determined:', targetColumnId);
-
-    // Check if the card is actually moving to a different column
-    if (currentCard.column === targetColumnId) {
-      console.log('Card already in target column, no move needed');
+      console.error('Card not found:', cardId);
       setActiveCard(null);
       return;
     }
@@ -242,12 +195,13 @@ export function KanbanBoard() {
       return;
     }
 
-    if (user.role === 'Editor' && currentCard.assigneeUid !== user.uid) {
-      console.log('Permission denied - Editor can only move assigned cards');
+    // Check if user has permission to move the card
+    if (user.role === 'Editor' && currentCard.assigneeUid !== user.uid && currentCard.assigneeUid !== null) {
+      console.log('Permission denied - Editor can only move assigned or unassigned cards');
       toast({ 
         variant: 'destructive', 
         title: 'Permission Denied', 
-        description: 'You can only move cards assigned to you.' 
+        description: 'You can only move cards assigned to you or unassigned cards.' 
       });
       setActiveCard(null);
       return;
@@ -276,9 +230,22 @@ export function KanbanBoard() {
   };
 
   const handleUpdateCard = async (updatedCard: Card) => {
+    if (!user) return;
+
     try {
+      // Check if user has permission to update the card
+      if (user.role === 'Editor' && updatedCard.assigneeUid !== user.uid && updatedCard.assigneeUid !== null) {
+        toast({
+          variant: 'destructive',
+          title: 'Permission Denied',
+          description: 'You can only update cards assigned to you or unassigned cards.'
+        });
+        return;
+      }
+
       await cardService.updateCard(updatedCard.id, updatedCard);
       setCardForTranslation(null);
+      setCardForDetails(null);
       toast({
         title: "Card Updated",
         description: "Card has been updated successfully."
@@ -291,6 +258,10 @@ export function KanbanBoard() {
         description: 'Failed to update card. Please try again.'
       });
     }
+  };
+
+  const handleCardClick = (card: Card) => {
+    setCardForDetails(card);
   };
 
   const findCard = (id: string): Card | undefined => {
@@ -318,6 +289,7 @@ export function KanbanBoard() {
                 column={column}
                 users={users}
                 openTranslationModal={setCardForTranslation}
+                onCardClick={handleCardClick}
               />
             );
           })}
@@ -342,6 +314,17 @@ export function KanbanBoard() {
         <TranslationModal
           card={cardForTranslation}
           onClose={() => setCardForTranslation(null)}
+          onSave={handleUpdateCard}
+        />
+      )}
+
+      {cardForDetails && (
+        <CardDetailsModal
+          card={cardForDetails}
+          user={users[cardForDetails.creatorUid]}
+          assignee={cardForDetails.assigneeUid ? users[cardForDetails.assigneeUid] : undefined}
+          isOpen={!!cardForDetails}
+          onClose={() => setCardForDetails(null)}
           onSave={handleUpdateCard}
         />
       )}
