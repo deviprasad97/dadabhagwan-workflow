@@ -58,11 +58,18 @@ const SortableColumnItem = React.memo(({ column, onEdit, onDelete, canManage }: 
     <div
       ref={setNodeRef}
       style={style}
-      className="flex items-center gap-3 p-3 border rounded-lg bg-card"
+      className={`flex items-center gap-3 p-3 border rounded-lg bg-card transition-all ${
+        isDragging ? 'shadow-lg ring-2 ring-primary ring-opacity-50 bg-accent' : 'hover:bg-accent/50'
+      }`}
     >
       {canManage && (
-        <div {...attributes} {...listeners} className="cursor-grab">
-          <GripVertical className="h-4 w-4 text-muted-foreground" />
+        <div 
+          {...attributes} 
+          {...listeners} 
+          className="cursor-grab active:cursor-grabbing p-1 rounded hover:bg-muted transition-colors"
+          title="Drag to reorder"
+        >
+          <GripVertical className="h-4 w-4 text-muted-foreground hover:text-foreground transition-colors" />
         </div>
       )}
       
@@ -149,11 +156,21 @@ export function ColumnManager({ board, onUpdateBoard }: ColumnManagerProps) {
   const columns = useMemo(() => {
     const defaultColumns: ColumnDefinition[] = [
       {
+        id: 'live',
+        title: 'Live',
+        description: 'Questions that are currently live and being discussed',
+        color: '#ef4444',
+        order: 0,
+        isDefault: true,
+        createdAt: new Date().toISOString(),
+        createdBy: 'system',
+      },
+      {
         id: 'online_submitted',
         title: 'Online Submitted',
         description: 'Questions submitted through online forms',
         color: '#06b6d4',
-        order: 0,
+        order: 1,
         isDefault: true,
         createdAt: new Date().toISOString(),
         createdBy: 'system',
@@ -163,7 +180,7 @@ export function ColumnManager({ board, onUpdateBoard }: ColumnManagerProps) {
         title: 'Translate Gujarati',
         description: 'Questions being translated to Gujarati',
         color: '#eab308',
-        order: 1,
+        order: 2,
         isDefault: true,
         createdAt: new Date().toISOString(),
         createdBy: 'system',
@@ -173,7 +190,7 @@ export function ColumnManager({ board, onUpdateBoard }: ColumnManagerProps) {
         title: 'Checking Gujarati',
         description: 'Gujarati translations being reviewed',
         color: '#f97316',
-        order: 2,
+        order: 3,
         isDefault: true,
         createdAt: new Date().toISOString(),
         createdBy: 'system',
@@ -183,7 +200,7 @@ export function ColumnManager({ board, onUpdateBoard }: ColumnManagerProps) {
         title: 'Print',
         description: 'Questions ready for printing',
         color: '#8b5cf6',
-        order: 3,
+        order: 4,
         isDefault: true,
         createdAt: new Date().toISOString(),
         createdBy: 'system',
@@ -193,7 +210,7 @@ export function ColumnManager({ board, onUpdateBoard }: ColumnManagerProps) {
         title: 'Done',
         description: 'Completed questions',
         color: '#22c55e',
-        order: 4,
+        order: 5,
         isDefault: true,
         createdAt: new Date().toISOString(),
         createdBy: 'system',
@@ -347,9 +364,15 @@ export function ColumnManager({ board, onUpdateBoard }: ColumnManagerProps) {
 
           <div className="flex flex-col h-full">
             <div className="flex items-center justify-between py-4">
-              <p className="text-sm text-muted-foreground">
-                Customize workflow columns for this board
-              </p>
+              <div>
+                <p className="text-sm text-muted-foreground">
+                  Customize workflow columns for this board
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  <GripVertical className="h-3 w-3 inline mr-1" />
+                  Drag columns to reorder them
+                </p>
+              </div>
               <Button onClick={() => handleOpenColumnDialog()} className="flex items-center gap-2">
                 <Plus className="h-4 w-4" />
                 Add Column
