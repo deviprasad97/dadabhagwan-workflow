@@ -50,9 +50,9 @@ export function Header() {
   return (
     <header className="flex h-16 items-center justify-between border-b bg-card px-4 md:px-6">
       <div className="flex items-center gap-3">
-        <BookOpenCheck className="h-8 w-8 text-primary" />
+        <img src="/logo.png" alt="DadaBhagwan Logo" className="h-8 w-8" />
         <Link href="/" className="hover:opacity-80 transition-opacity">
-          <h1 className="text-xl font-bold font-headline text-foreground">DadaBhagwan - Gujarati Question Bank</h1>
+          <h1 className="text-xl font-bold font-headline text-foreground">DadaBhagwan - Gujarati Question Workflow</h1>
         </Link>
       </div>
 

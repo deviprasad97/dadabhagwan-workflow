@@ -40,6 +40,8 @@ import { formatDistanceToNow } from 'date-fns';
 import { useAuth } from '@/hooks/use-auth';
 import { cn } from '@/lib/utils';
 import { suggestGujaratiTranslation } from '@/ai/flows/suggest-gujarati-translation';
+import { ReactTransliterate } from 'react-transliterate';
+import 'react-transliterate/dist/index.css';
 import { OpenAI } from 'openai';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import { firestore } from '@/lib/firebase';
@@ -666,14 +668,49 @@ export function CardDetailsModal({
                       {card?.column === 'print' && (
                         <Badge variant="secondary" className="ml-2">Locked</Badge>
                       )}
+                      {card?.column === 'checking_gujarati' && isEditing && canEditTranslation && (
+                        <Badge variant="outline" className="ml-2">
+                          <span className="mr-1">🔤</span>
+                          Gujarati Transliteration Enabled
+                        </Badge>
+                      )}
                     </Label>
                     {isEditing && canEditTranslation ? (
-                      <Textarea
-                        value={adminFields.approvedTranslation}
-                        onChange={(e) => setAdminFields(prev => ({ ...prev, approvedTranslation: e.target.value }))}
-                        placeholder="Enter approved Gujarati translation here..."
-                        className="min-h-[100px]"
-                      />
+                      card?.column === 'checking_gujarati' ? (
+                        // Use ReactTransliterate for Checking Gujarati column
+                        <div className="min-h-[100px] relative">
+                          <ReactTransliterate
+                            value={adminFields.approvedTranslation}
+                            onChangeText={(text) => setAdminFields(prev => ({ ...prev, approvedTranslation: text }))}
+                            lang="gu"
+                            renderComponent={(props) => (
+                              <Textarea
+                                {...props}
+                                placeholder="Type in English to get Gujarati transliteration suggestions, or type directly in Gujarati..."
+                                className="min-h-[100px]"
+                              />
+                            )}
+                            maxOptions={5}
+                            showCurrentWordAsLastSuggestion={true}
+                            containerClassName="relative"
+                            activeItemStyles={{
+                              backgroundColor: 'hsl(var(--accent))',
+                              color: 'hsl(var(--accent-foreground))'
+                            }}
+                          />
+                          <div className="absolute top-2 right-2 text-xs text-muted-foreground">
+                            Type in English for Gujarati suggestions
+                          </div>
+                        </div>
+                      ) : (
+                        // Regular textarea for other columns
+                        <Textarea
+                          value={adminFields.approvedTranslation}
+                          onChange={(e) => setAdminFields(prev => ({ ...prev, approvedTranslation: e.target.value }))}
+                          placeholder="Enter approved Gujarati translation here..."
+                          className="min-h-[100px]"
+                        />
+                      )
                     ) : (
                       <div className="p-4 bg-muted/50 rounded-lg border">
                         <p className="text-sm leading-relaxed whitespace-pre-wrap">

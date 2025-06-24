@@ -58,13 +58,13 @@ export default function Home() {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-background p-4 text-center">
         <div className="flex items-center gap-4 mb-6">
-          <BookOpenCheck className="h-12 w-12 text-primary" />
+          <img src="/logo.png" alt="DadaBhagwan Logo" className="h-8 w-8" />
           <h1 className="text-5xl font-headline font-bold text-primary-foreground bg-primary px-4 py-2 rounded-lg">
             DadaBhagwan - Gujarati Question Bank
           </h1>
         </div>
         <p className="text-muted-foreground mb-8 max-w-md">
-          Streamline your workflow by visualizing Google Form submissions on a real-time Kanban board.
+          Streamline your Question translation workflow by visualizing Form submissions on a real-time Kanban board.
         </p>
         <Button onClick={login} size="lg" className="font-bold">
           Sign In with Google
