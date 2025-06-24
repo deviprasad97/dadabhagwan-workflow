@@ -13,7 +13,6 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import dynamic from 'next/dynamic';
-import { PrintTemplate } from './print-template';
 import { 
   User as UserIcon, 
   Mail, 
@@ -123,15 +122,6 @@ interface CardDetailsModalProps {
   onClose: () => void;
   onSave: (updatedCard: Card) => void;
 }
-
-// Dynamically import PDF components to avoid SSR issues (keeping for future use)
-const PDFViewer = dynamic(
-  () => import('@react-pdf/renderer').then((mod) => ({ default: mod.PDFViewer })),
-  { 
-    ssr: false,
-    loading: () => <div className="flex items-center justify-center h-96">Loading PDF viewer...</div>
-  }
-);
 
 export function CardDetailsModal({ 
   card, 

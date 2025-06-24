@@ -7,11 +7,18 @@ import { Button } from '@/components/ui/button';
 import { BookOpenCheck, AlertTriangle, Settings } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useSearchParams } from 'next/navigation';
+import { Suspense } from 'react';
+
+// Separate component for the board selection logic
+function BoardSelector() {
+  const searchParams = useSearchParams();
+  const selectedBoardId = searchParams.get('board');
+  
+  return <KanbanBoard selectedBoardId={selectedBoardId} />;
+}
 
 export default function Home() {
   const { user, login, loading, firebaseConfigured } = useAuth();
-  const searchParams = useSearchParams();
-  const selectedBoardId = searchParams.get('board');
 
   if (loading) {
     return (
@@ -77,7 +84,13 @@ export default function Home() {
     <div className="flex flex-col h-screen bg-background">
       <Header />
       <main className="flex-1 overflow-x-auto overflow-y-hidden p-4 md:p-6">
-        <KanbanBoard selectedBoardId={selectedBoardId} />
+        <Suspense fallback={
+          <div className="flex items-center justify-center min-h-[400px]">
+            <BookOpenCheck className="h-8 w-8 animate-pulse text-primary" />
+          </div>
+        }>
+          <BoardSelector />
+        </Suspense>
       </main>
     </div>
   );
