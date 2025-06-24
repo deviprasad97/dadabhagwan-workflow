@@ -32,13 +32,17 @@ import {
   Wand2,
   Check,
   Copy,
-  Printer
+  Printer,
+  UserPlus,
+  UserMinus
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useAuth } from '@/hooks/use-auth';
 import { cn } from '@/lib/utils';
 import { suggestGujaratiTranslation } from '@/ai/flows/suggest-gujarati-translation';
 import { OpenAI } from 'openai';
+import { collection, getDocs, query, where } from 'firebase/firestore';
+import { firestore } from '@/lib/firebase';
 
 type TranslationProvider = 'genkit' | 'openai' | 'sutra';
 
@@ -54,6 +58,7 @@ interface AdminFields {
   topic: string;
   gujaratiTranslation: string;
   approvedTranslation: string;
+  assigneeUid: string | undefined;
 }
 
 // Initialize OpenAI client
@@ -137,19 +142,54 @@ export function CardDetailsModal({
   const { user: currentUser } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
   const [translationStatuses, setTranslationStatuses] = useState<TranslationStatus[]>([]);
+  const [availableUsers, setAvailableUsers] = useState<User[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
   const [adminFields, setAdminFields] = useState<AdminFields>({
     priority: undefined,
     topic: '',
     gujaratiTranslation: '',
-    approvedTranslation: ''
+    approvedTranslation: '',
+    assigneeUid: undefined
   });
 
   const isAdmin = currentUser?.role === 'Admin';
-  const canEdit = isAdmin || (currentUser?.role === 'Editor' && card?.assigneeUid === currentUser.uid);
+  const isEditor = currentUser?.role === 'Editor';
+  const canEdit = isAdmin || (isEditor && card?.assigneeUid === currentUser.uid);
+  const canAssign = isAdmin || isEditor; // Both Admin and Editor can assign
   const showApprovedTranslation = card?.column === 'translate_gujarati' || card?.column === 'checking_gujarati';
   const canEditTranslation = showApprovedTranslation && card?.column !== 'print';
 
   const isPrintColumn = card?.column === 'print';
+
+  // Fetch eligible users (Admin and Editor only) for assignment
+  useEffect(() => {
+    const fetchEligibleUsers = async () => {
+      if (!canAssign) return;
+      
+      setLoadingUsers(true);
+      try {
+        const usersQuery = query(
+          collection(firestore, 'users'),
+          where('role', 'in', ['Admin', 'Editor'])
+        );
+        const usersSnapshot = await getDocs(usersQuery);
+        const usersData = usersSnapshot.docs.map(doc => ({
+          uid: doc.id,
+          ...doc.data()
+        })) as User[];
+        
+        setAvailableUsers(usersData);
+      } catch (error) {
+        console.error('Error fetching eligible users:', error);
+      } finally {
+        setLoadingUsers(false);
+      }
+    };
+
+    if (isOpen) {
+      fetchEligibleUsers();
+    }
+  }, [isOpen, canAssign]);
 
   // Initialize admin fields when card changes
   useEffect(() => {
@@ -158,7 +198,8 @@ export function CardDetailsModal({
         priority: (card.metadata?.priority as AdminFields['priority']) || undefined,
         topic: String(card.metadata?.topic || ''),
         gujaratiTranslation: String(card.metadata?.gujaratiTranslation || ''),
-        approvedTranslation: String(card.metadata?.approvedTranslation || '')
+        approvedTranslation: String(card.metadata?.approvedTranslation || ''),
+        assigneeUid: card.assigneeUid || undefined
       });
     }
   }, [card]);
@@ -189,6 +230,7 @@ export function CardDetailsModal({
 
     const updatedCard: Card = {
       ...card,
+      assigneeUid: adminFields.assigneeUid,
       metadata,
       updatedAt: new Date().toISOString()
     };
@@ -281,7 +323,8 @@ export function CardDetailsModal({
       priority: (card?.metadata?.priority as AdminFields['priority']) || undefined,
       topic: String(card?.metadata?.topic || ''),
       gujaratiTranslation: String(card?.metadata?.gujaratiTranslation || ''),
-      approvedTranslation: String(card?.metadata?.approvedTranslation || '')
+      approvedTranslation: String(card?.metadata?.approvedTranslation || ''),
+      assigneeUid: card?.assigneeUid || undefined
     });
     setIsEditing(false);
   };
@@ -323,6 +366,11 @@ export function CardDetailsModal({
       default: return column;
     }
   };
+
+  // Find the currently assigned user
+  const currentAssignee = adminFields.assigneeUid 
+    ? availableUsers.find(u => u.uid === adminFields.assigneeUid) || assignee
+    : assignee;
 
   return (
     <Sheet open={isOpen} onOpenChange={onClose} modal={false}>
@@ -659,9 +707,9 @@ export function CardDetailsModal({
                   <Flag className="h-5 w-5 text-primary" />
                   Admin Fields
                 </h3>
-                {!isAdmin && (
+                {!canEdit && (
                   <Badge variant="outline" className="text-xs">
-                    View Only
+                    {!canAssign ? 'View Only' : 'Assignment Only'}
                   </Badge>
                 )}
               </div>
@@ -724,6 +772,67 @@ export function CardDetailsModal({
                     </div>
                   )}
                 </div>
+
+                {/* Assignment Field */}
+                <div className="space-y-2">
+                  <Label htmlFor="assignee" className="text-sm font-medium text-muted-foreground">
+                    Assign To
+                  </Label>
+                  {isEditing && canAssign ? (
+                    <Select
+                      value={adminFields.assigneeUid || ""}
+                      onValueChange={(value) => setAdminFields(prev => ({ 
+                        ...prev, 
+                        assigneeUid: value === "" ? undefined : value 
+                      }))}
+                      disabled={loadingUsers}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder={loadingUsers ? "Loading users..." : "Select assignee"} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="">
+                          <div className="flex items-center gap-2">
+                            <UserMinus className="h-4 w-4 text-muted-foreground" />
+                            <span>Unassigned</span>
+                          </div>
+                        </SelectItem>
+                        {availableUsers.map((user) => (
+                          <SelectItem key={user.uid} value={user.uid}>
+                            <div className="flex items-center gap-2">
+                              <Avatar className="h-4 w-4">
+                                <AvatarImage src={user.avatarUrl} alt={user.name} />
+                                <AvatarFallback className="text-xs">{getInitials(user.name)}</AvatarFallback>
+                              </Avatar>
+                              <span>{user.name}</span>
+                              <Badge variant="outline" className="text-xs">
+                                {user.role}
+                              </Badge>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <div className="flex items-center gap-2 h-10 px-3 py-2 border rounded-md bg-muted/50">
+                      {currentAssignee ? (
+                        <>
+                          <Avatar className="h-6 w-6">
+                            <AvatarImage src={currentAssignee.avatarUrl} alt={currentAssignee.name} />
+                            <AvatarFallback className="text-xs">{getInitials(currentAssignee.name)}</AvatarFallback>
+                          </Avatar>
+                          <span className="text-sm">{currentAssignee.name}</span>
+                          <Badge variant="outline" className="text-xs">{currentAssignee.role}</Badge>
+                        </>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <UserMinus className="h-4 w-4 text-muted-foreground" />
+                          <span className="text-muted-foreground">Unassigned</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -739,14 +848,14 @@ export function CardDetailsModal({
                 <div className="space-y-2">
                   <Label className="text-sm font-medium text-muted-foreground">Assigned To</Label>
                   <div className="flex items-center gap-2">
-                    {assignee ? (
+                    {currentAssignee ? (
                       <>
                         <Avatar className="h-6 w-6">
-                          <AvatarImage src={assignee.avatarUrl} alt={assignee.name} />
-                          <AvatarFallback className="text-xs">{getInitials(assignee.name)}</AvatarFallback>
+                          <AvatarImage src={currentAssignee.avatarUrl} alt={currentAssignee.name} />
+                          <AvatarFallback className="text-xs">{getInitials(currentAssignee.name)}</AvatarFallback>
                         </Avatar>
-                        <span className="text-sm">{assignee.name}</span>
-                        <Badge variant="outline" className="text-xs">{assignee.role}</Badge>
+                        <span className="text-sm">{currentAssignee.name}</span>
+                        <Badge variant="outline" className="text-xs">{currentAssignee.role}</Badge>
                       </>
                     ) : (
                       <span className="text-muted-foreground text-sm">Unassigned</span>

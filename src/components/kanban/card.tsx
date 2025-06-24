@@ -5,12 +5,26 @@ import { Card as UICard, CardContent, CardFooter, CardHeader, CardTitle } from '
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Button } from '@/components/ui/button';
-import { Languages, Clock, Eye } from 'lucide-react';
+import { 
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Badge } from '@/components/ui/badge';
+import { Languages, Clock, Eye, UserPlus, UserMinus, MoreVertical } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useAuth } from '@/hooks/use-auth';
 import { cn } from '@/lib/utils';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { useState, useEffect } from 'react';
+import { collection, getDocs, query, where } from 'firebase/firestore';
+import { firestore } from '@/lib/firebase';
+import { cardService } from '@/lib/firestore';
+import { toast } from '@/hooks/use-toast';
 
 interface KanbanCardProps {
   card: Card;
@@ -32,8 +46,13 @@ export function KanbanCard({
   onCardClick
 }: KanbanCardProps) {
   const { user: currentUser } = useAuth();
+  const [availableUsers, setAvailableUsers] = useState<User[]>([]);
+  const [loadingAssignment, setLoadingAssignment] = useState(false);
+  
   const isDraggable = currentUser?.role === 'Admin' || 
     (currentUser?.role === 'Editor' && (card.assigneeUid === currentUser.uid || !card.assigneeUid));
+  
+  const canAssign = currentUser?.role === 'Admin' || currentUser?.role === 'Editor';
 
   console.log(`Card ${card.id} - isDraggable: ${isDraggable}, userRole: ${currentUser?.role}, assignee: ${card.assigneeUid}`);
 
@@ -54,6 +73,31 @@ export function KanbanCard({
     transition,
   };
 
+  // Fetch eligible users for assignment
+  useEffect(() => {
+    const fetchEligibleUsers = async () => {
+      if (!canAssign) return;
+      
+      try {
+        const usersQuery = query(
+          collection(firestore, 'users'),
+          where('role', 'in', ['Admin', 'Editor'])
+        );
+        const usersSnapshot = await getDocs(usersQuery);
+        const usersData = usersSnapshot.docs.map(doc => ({
+          uid: doc.id,
+          ...doc.data()
+        })) as User[];
+        
+        setAvailableUsers(usersData);
+      } catch (error) {
+        console.error('Error fetching eligible users:', error);
+      }
+    };
+
+    fetchEligibleUsers();
+  }, [canAssign]);
+
   console.log(`Card ${card.id} dragging state - isDragging: ${isDragging}, sortableIsDragging: ${sortableIsDragging}`);
 
   const handleTranslationClick = () => {
@@ -63,6 +107,34 @@ export function KanbanCard({
       openTranslationModal(card);
     }
   };
+
+  const handleAssignUser = async (userId: string | null) => {
+    setLoadingAssignment(true);
+    try {
+      await cardService.updateCard(card.id, {
+        assigneeUid: userId || undefined,
+        updatedAt: new Date().toISOString()
+      });
+
+      const assigneeName = userId 
+        ? availableUsers.find(u => u.uid === userId)?.name || 'Unknown User'
+        : 'Unassigned';
+
+      toast({
+        title: "Assignment Updated",
+        description: `Card "${card.title}" ${userId ? `assigned to ${assigneeName}` : 'unassigned'}.`
+      });
+    } catch (error) {
+      console.error('Error updating assignment:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: 'Failed to update assignment. Please try again.'
+      });
+    } finally {
+      setLoadingAssignment(false);
+    }
+  };
   
   const handleMouseUp = (e: React.MouseEvent) => {
     console.log(`Mouse up on card ${card.id}`, e);
@@ -70,7 +142,7 @@ export function KanbanCard({
     // Don't open modal if clicking on buttons or during drag operations
     if (
       e.target instanceof HTMLElement && 
-      (e.target.closest('button') || e.target.closest('[role="button"]'))
+      (e.target.closest('button') || e.target.closest('[role="button"]') || e.target.closest('[data-radix-collection-item]'))
     ) {
       return;
     }
@@ -106,7 +178,7 @@ export function KanbanCard({
       onMouseDown={handleMouseDown}
       onMouseUp={handleMouseUp}
       className={cn(
-        "bg-card shadow-md hover:shadow-lg transition-shadow duration-200 border-l-4",
+        "bg-card shadow-md hover:shadow-lg transition-shadow duration-200 border-l-4 group",
         isDraggable ? 'cursor-grab active:cursor-grabbing' : 'cursor-not-allowed',
         isDragging && 'opacity-50',
         sortableIsDragging && 'opacity-30',
@@ -118,10 +190,85 @@ export function KanbanCard({
       )}
     >
       <CardHeader className="p-4">
-        <CardTitle className="text-base font-bold font-body">{card.title}</CardTitle>
+        <div className="flex items-start justify-between">
+          <CardTitle className="text-base font-bold font-body flex-1">
+            {card.metadata?.formData?.firstname && card.metadata?.formData?.lastname 
+              ? `${card.metadata.formData.firstname} ${card.metadata.formData.lastname}`
+              : card.title}
+          </CardTitle>
+          {canAssign && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="h-6 w-6 p-0 transition-opacity"
+                  onClick={(e) => e.stopPropagation()}
+                  disabled={loadingAssignment}
+                >
+                  <MoreVertical className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-64">
+                <DropdownMenuLabel>Assign to</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleAssignUser(null);
+                  }}
+                  className="flex items-center gap-2"
+                >
+                  <UserMinus className="h-4 w-4" />
+                  <span>Unassigned</span>
+                  {!card.assigneeUid && <Badge variant="secondary" className="ml-auto text-xs">Current</Badge>}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                {availableUsers.map((user) => (
+                  <DropdownMenuItem 
+                    key={user.uid}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleAssignUser(user.uid);
+                    }}
+                    className="flex items-center gap-2"
+                  >
+                    <Avatar className="h-4 w-4">
+                      <AvatarImage src={user.avatarUrl} alt={user.name} />
+                      <AvatarFallback className="text-xs">{getInitials(user.name)}</AvatarFallback>
+                    </Avatar>
+                    <span>{user.name}</span>
+                    <Badge variant="outline" className="text-xs">
+                      {user.role}
+                    </Badge>
+                    {card.assigneeUid === user.uid && <Badge variant="secondary" className="ml-auto text-xs">Current</Badge>}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        </div>
       </CardHeader>
       <CardContent className="p-4 pt-0">
-        <p className="text-sm text-muted-foreground line-clamp-3">{card.content}</p>
+        <div className="space-y-3">
+          {/* English Question */}
+          {card.metadata?.formData?.english_question && (
+            <div className="space-y-1">
+              <div className="text-xs font-medium text-muted-foreground">English Question:</div>
+              <p className="text-sm line-clamp-3">{card.metadata.formData.english_question}</p>
+            </div>
+          )}
+          
+          {/* Gujarati Translation */}
+          {(card.metadata?.gujaratiTranslation || card.metadata?.approvedTranslation) && (
+            <div className="space-y-1">
+              <div className="text-xs font-medium text-muted-foreground">Gujarati Translation:</div>
+              <p className="text-sm line-clamp-3 text-blue-700">
+                {card.metadata?.approvedTranslation || card.metadata?.gujaratiTranslation}
+              </p>
+            </div>
+          )}
+        </div>
       </CardContent>
       <CardFooter className="flex justify-between items-center p-4 pt-0">
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -130,11 +277,11 @@ export function KanbanCard({
         </div>
         <div className="flex items-center gap-2">
             <div className="flex items-center gap-2">
-              {card.column === 'translate_gujarati' && (currentUser?.role === 'Admin' || currentUser?.role === 'Editor') && (
+              {/* {card.column === 'translate_gujarati_stup' && (currentUser?.role === 'Admin' || currentUser?.role === 'Editor') && (
                    <Button variant="outline" size="sm" onClick={handleTranslationClick} className="h-8">
                       <Languages className="h-4 w-4 mr-2" /> Translate
                    </Button>
-              )}
+              )} */}
               <Button 
                 variant="ghost" 
                 size="sm" 
