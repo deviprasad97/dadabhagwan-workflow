@@ -20,7 +20,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { cn } from '@/lib/utils';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import { firestore } from '@/lib/firebase';
 import { cardService } from '@/lib/firestore';
@@ -36,7 +36,7 @@ interface KanbanCardProps {
   onCardClick?: (card: Card) => void;
 }
 
-export function KanbanCard({ 
+export const KanbanCard = React.memo(function KanbanCard({ 
   card, 
   user, 
   assignee, 
@@ -49,12 +49,16 @@ export function KanbanCard({
   const [availableUsers, setAvailableUsers] = useState<User[]>([]);
   const [loadingAssignment, setLoadingAssignment] = useState(false);
   
-  const isDraggable = currentUser?.role === 'Admin' || 
-    (currentUser?.role === 'Editor' && (card.assigneeUid === currentUser.uid || !card.assigneeUid));
+  const isDraggable = useMemo(() => 
+    currentUser?.role === 'Admin' || 
+    (currentUser?.role === 'Editor' && (card.assigneeUid === currentUser.uid || !card.assigneeUid)),
+    [currentUser?.role, currentUser?.uid, card.assigneeUid]
+  );
   
-  const canAssign = currentUser?.role === 'Admin' || currentUser?.role === 'Editor';
-
-  console.log(`Card ${card.id} - isDraggable: ${isDraggable}, userRole: ${currentUser?.role}, assignee: ${card.assigneeUid}`);
+  const canAssign = useMemo(() => 
+    currentUser?.role === 'Admin' || currentUser?.role === 'Editor',
+    [currentUser?.role]
+  );
 
   const {
     attributes,
@@ -73,7 +77,7 @@ export function KanbanCard({
     transition,
   };
 
-  // Fetch eligible users for assignment
+  // Fetch eligible users for assignment - memoized
   useEffect(() => {
     const fetchEligibleUsers = async () => {
       if (!canAssign) return;
@@ -98,17 +102,15 @@ export function KanbanCard({
     fetchEligibleUsers();
   }, [canAssign]);
 
-  console.log(`Card ${card.id} dragging state - isDragging: ${isDragging}, sortableIsDragging: ${sortableIsDragging}`);
-
-  const handleTranslationClick = () => {
+  const handleTranslationClick = useCallback(() => {
     if (onTranslationClick) {
       onTranslationClick();
     } else {
       openTranslationModal(card);
     }
-  };
+  }, [onTranslationClick, openTranslationModal, card]);
 
-  const handleAssignUser = async (userId: string | null) => {
+  const handleAssignUser = useCallback(async (userId: string | null) => {
     setLoadingAssignment(true);
     try {
       await cardService.updateCard(card.id, {
@@ -134,11 +136,9 @@ export function KanbanCard({
     } finally {
       setLoadingAssignment(false);
     }
-  };
+  }, [card.id, card.title, availableUsers, toast]);
   
-  const handleMouseUp = (e: React.MouseEvent) => {
-    console.log(`Mouse up on card ${card.id}`, e);
-    
+  const handleMouseUp = useCallback((e: React.MouseEvent) => {
     // Don't open modal if clicking on buttons or during drag operations
     if (
       e.target instanceof HTMLElement && 
@@ -156,18 +156,18 @@ export function KanbanCard({
     if (e.button === 0) {
       onCardClick?.(card);
     }
-  };
+  }, [sortableIsDragging, onCardClick, card]);
 
-  const handleMouseDown = (e: React.MouseEvent) => {
-    console.log(`Mouse down on card ${card.id}`, e);
-  };
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    // Mouse down handling if needed
+  }, []);
 
-  const getInitials = (name: string) => {
+  const getInitials = useCallback((name: string) => {
     return name
       .split(' ')
       .map((n) => n[0])
       .join('');
-  };
+  }, []);
 
   return (
     <UICard
@@ -191,11 +191,18 @@ export function KanbanCard({
     >
       <CardHeader className="p-4">
         <div className="flex items-start justify-between">
-          <CardTitle className="text-base font-bold font-body flex-1">
-            {card.metadata?.formData?.firstname && card.metadata?.formData?.lastname 
-              ? `${card.metadata.formData.firstname} ${card.metadata.formData.lastname}`
-              : card.title}
-          </CardTitle>
+          <div className="flex-1">
+            <div className="flex items-center gap-2 mb-1">
+              <Badge variant="outline" className="text-xs font-mono">
+                #{card.cardNumber}
+              </Badge>
+            </div>
+            <CardTitle className="text-base font-bold font-body">
+              {card.metadata?.formData?.firstname && card.metadata?.formData?.lastname 
+                ? `${card.metadata.formData.firstname} ${card.metadata.formData.lastname}`
+                : card.title}
+            </CardTitle>
+          </div>
           {canAssign && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -331,4 +338,4 @@ export function KanbanCard({
       </CardFooter>
     </UICard>
   );
-}
+});

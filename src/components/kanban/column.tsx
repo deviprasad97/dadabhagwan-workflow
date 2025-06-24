@@ -15,7 +15,12 @@ interface KanbanColumnProps {
   onCardClick?: (card: Card) => void;
 }
 
-export function KanbanColumn({ column, users, openTranslationModal, onCardClick }: KanbanColumnProps) {
+export const KanbanColumn = React.memo(function KanbanColumn({ 
+  column, 
+  users, 
+  openTranslationModal, 
+  onCardClick 
+}: KanbanColumnProps) {
   const { user } = useAuth();
   const canDrop = user?.role !== 'Viewer';
 
@@ -23,8 +28,6 @@ export function KanbanColumn({ column, users, openTranslationModal, onCardClick 
     id: column.id,
     disabled: !canDrop,
   });
-
-  console.log(`Column ${column.id} - isOver: ${isOver}, canDrop: ${canDrop}`);
 
   return (
     <div
@@ -79,4 +82,4 @@ export function KanbanColumn({ column, users, openTranslationModal, onCardClick 
       </div>
     </div>
   );
-}
+});

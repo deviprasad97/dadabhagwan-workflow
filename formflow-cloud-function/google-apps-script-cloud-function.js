@@ -13,8 +13,8 @@ const CONFIG = {
   ENABLE_LOGGING: true,
   
   // Retry configuration
-  MAX_RETRIES: 3,
-  RETRY_DELAY: 1000 // milliseconds
+  MAX_RETRIES: 1, // Reduced from 3 to prevent duplicate submissions
+  RETRY_DELAY: 2000 // milliseconds
 };
 
 /**
@@ -251,13 +251,16 @@ function setupFormTrigger() {
     // Get the form (replace with your form ID)
     const form = FormApp.openById('YOUR_FORM_ID');
     
-    // Delete existing triggers
+    // Delete ALL existing triggers to prevent duplicates
     const triggers = ScriptApp.getProjectTriggers();
+    console.log(`Found ${triggers.length} existing triggers, cleaning up...`);
     triggers.forEach(trigger => {
-      if (trigger.getHandlerFunction() === 'onFormSubmit') {
-        ScriptApp.deleteTrigger(trigger);
-      }
+      console.log(`Deleting trigger: ${trigger.getHandlerFunction()}`);
+      ScriptApp.deleteTrigger(trigger);
     });
+    
+    // Wait a moment for cleanup
+    Utilities.sleep(1000);
     
     // Create new trigger
     ScriptApp.newTrigger('onFormSubmit')
@@ -266,8 +269,37 @@ function setupFormTrigger() {
     
     console.log('✅ Form trigger set up successfully');
     
+    // Verify setup
+    const newTriggers = ScriptApp.getProjectTriggers();
+    console.log(`Setup complete. Active triggers: ${newTriggers.length}`);
+    
   } catch (error) {
     console.error('❌ Error setting up form trigger:', error);
+  }
+}
+
+/**
+ * Check for duplicate triggers (run this to diagnose issues)
+ */
+function checkTriggers() {
+  const triggers = ScriptApp.getProjectTriggers();
+  console.log(`Total triggers: ${triggers.length}`);
+  
+  triggers.forEach((trigger, index) => {
+    console.log(`Trigger ${index + 1}:`);
+    console.log(`  - Function: ${trigger.getHandlerFunction()}`);
+    console.log(`  - Event Type: ${trigger.getEventType()}`);
+    console.log(`  - Source: ${trigger.getTriggerSource()}`);
+  });
+  
+  const onFormSubmitTriggers = triggers.filter(t => t.getHandlerFunction() === 'onFormSubmit');
+  if (onFormSubmitTriggers.length > 1) {
+    console.error(`⚠️ DUPLICATE TRIGGERS DETECTED: ${onFormSubmitTriggers.length} onFormSubmit triggers found!`);
+    console.error('This will cause duplicate submissions. Run setupFormTrigger() to fix.');
+  } else if (onFormSubmitTriggers.length === 1) {
+    console.log('✅ Trigger setup is correct');
+  } else {
+    console.log('❌ No onFormSubmit trigger found');
   }
 }
 

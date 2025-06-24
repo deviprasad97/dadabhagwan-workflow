@@ -204,6 +204,7 @@ export type ColumnId = 'online_submitted' | 'translate_gujarati' | 'checking_guj
 
 export interface Card {
   id: string;
+  cardNumber: number; // Sequential number unique to each board
   title: string;
   content: string;
   column: ColumnId;

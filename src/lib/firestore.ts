@@ -19,7 +19,8 @@ import {
   arrayUnion,
   arrayRemove,
   increment,
-  deleteField
+  deleteField,
+  runTransaction
 } from 'firebase/firestore';
 import { firestore } from './firebase';
 import type { Card, User, ColumnId, Board, Form, FormSubmission, FormTemplate, BoardIntegration, SatsangCenter } from './types';
@@ -30,9 +31,92 @@ const CARDS_COLLECTION = 'cards';
 const USERS_COLLECTION = 'users';
 const BOARDS_COLLECTION = 'boards';
 const AUDIT_COLLECTION = 'audit_logs';
+const COUNTERS_COLLECTION = 'counters';
 
 // Default board ID for migration
 const DEFAULT_BOARD_ID = 'default-board';
+
+// Counter service for sequential card numbering
+const counterService = {
+  // Get next card number for a board
+  getNextCardNumber: async (boardId: string): Promise<number> => {
+    const counterDocId = `card_counter_${boardId}`;
+    const counterRef = doc(firestore, COUNTERS_COLLECTION, counterDocId);
+    
+    try {
+      // Use a transaction to ensure atomic increment
+      const nextNumber = await runTransaction(firestore, async (transaction) => {
+        const counterDoc = await transaction.get(counterRef);
+        
+        if (!counterDoc.exists()) {
+          // First card for this board
+          transaction.set(counterRef, {
+            boardId,
+            lastCardNumber: 1,
+            updatedAt: serverTimestamp(),
+          });
+          return 1;
+        } else {
+          // Increment existing counter
+          const currentNumber = counterDoc.data()?.lastCardNumber || 0;
+          const nextNumber = currentNumber + 1;
+          transaction.update(counterRef, {
+            lastCardNumber: nextNumber,
+            updatedAt: serverTimestamp(),
+          });
+          return nextNumber;
+        }
+      });
+      
+      return nextNumber;
+    } catch (error) {
+      console.error('Error getting next card number:', error);
+      // Fallback to timestamp-based number if transaction fails
+      return Date.now() % 100000;
+    }
+  },
+
+  // Initialize counter for existing cards (migration helper)
+  initializeCounterForBoard: async (boardId: string): Promise<void> => {
+    try {
+      // Get all cards for this board
+      const cardsQuery = query(
+        collection(firestore, CARDS_COLLECTION),
+        where('boardId', '==', boardId),
+        orderBy('createdAt', 'asc')
+      );
+      
+      const cardsSnapshot = await getDocs(cardsQuery);
+      let cardNumber = 1;
+      
+      // Update each card with a sequential number
+      const batch = writeBatch(firestore);
+      
+      cardsSnapshot.forEach((cardDoc) => {
+        const cardRef = doc(firestore, CARDS_COLLECTION, cardDoc.id);
+        batch.update(cardRef, {
+          cardNumber: cardNumber++,
+          updatedAt: serverTimestamp(),
+        });
+      });
+      
+      await batch.commit();
+      
+      // Set the counter to the next number
+      const counterDocId = `card_counter_${boardId}`;
+      const counterRef = doc(firestore, COUNTERS_COLLECTION, counterDocId);
+      await setDoc(counterRef, {
+        boardId,
+        lastCardNumber: cardNumber - 1,
+        updatedAt: serverTimestamp(),
+      });
+      
+      console.log(`Initialized counter for board ${boardId} with ${cardNumber - 1} cards`);
+    } catch (error) {
+      console.error('Error initializing counter for board:', boardId, error);
+    }
+  }
+};
 
 // Seed database with mock data if empty
 export const seedMockData = async (): Promise<void> => {
@@ -101,8 +185,20 @@ export const seedMockData = async (): Promise<void> => {
       }
       
       console.log('Mock data seeded successfully!');
+      
+      // Initialize counter for the default board
+      await counterService.initializeCounterForBoard(DEFAULT_BOARD_ID);
     } else {
       console.log('Database already has data, skipping card seed.');
+      
+      // Check if cards need cardNumber migration
+      const cardsSnapshot = await getDocs(collection(firestore, CARDS_COLLECTION));
+      const needsMigration = cardsSnapshot.docs.some(doc => !doc.data().cardNumber);
+      
+      if (needsMigration) {
+        console.log('Migrating existing cards to add card numbers...');
+        await counterService.initializeCounterForBoard(DEFAULT_BOARD_ID);
+      }
     }
   } catch (error) {
     console.error('Error seeding mock data:', error);
@@ -134,6 +230,7 @@ export const cardService = {
         const data = doc.data();
         cards.push({
           id: doc.id,
+          cardNumber: data.cardNumber || 0, // Migration support - will be updated by counter
           title: data.title,
           content: data.content,
           creatorUid: data.creatorUid,
@@ -154,10 +251,16 @@ export const cardService = {
   },
 
   // Add a new card
-  addCard: async (card: Omit<Card, 'id' | 'createdAt'>): Promise<string> => {
+  addCard: async (card: Omit<Card, 'id' | 'createdAt' | 'cardNumber'>): Promise<string> => {
+    const boardId = card.boardId || DEFAULT_BOARD_ID;
+    
+    // Get next card number for this board
+    const cardNumber = await counterService.getNextCardNumber(boardId);
+    
     const docRef = await addDoc(collection(firestore, CARDS_COLLECTION), {
       ...card,
-      boardId: card.boardId || DEFAULT_BOARD_ID,
+      cardNumber,
+      boardId,
       createdAt: serverTimestamp(),
     });
     return docRef.id;
@@ -232,6 +335,7 @@ export const cardService = {
       const data = doc.data();
       cards.push({
         id: doc.id,
+        cardNumber: data.cardNumber || 0, // Migration support
         title: data.title,
         content: data.content,
         creatorUid: data.creatorUid,
@@ -651,6 +755,7 @@ export const boardService = {
 const mockCards: Card[] = [
   {
     id: 'card-1',
+    cardNumber: 1,
     title: 'Rajesh Patel',
     content: `📧 **Contact Information**
 Email: rajesh.patel@example.com
@@ -691,6 +796,7 @@ What is the difference between ego and pride? How can I identify when I am actin
   },
   {
     id: 'card-2',
+    cardNumber: 2,
     title: 'Priya Shah',
     content: `📧 **Contact Information**
 Email: priya.shah@example.com
@@ -728,6 +834,7 @@ How can I maintain equanimity during difficult family situations? I find myself 
   },
   {
     id: 'card-3',
+    cardNumber: 3,
     title: 'Amit Desai',
     content: `📧 **Contact Information**
 Email: amit.desai@example.com
@@ -771,6 +878,7 @@ This question has been bothering me for a while. I would appreciate a detailed e
   },
   {
     id: 'card-4',
+    cardNumber: 4,
     title: 'Neha Joshi',
     content: `📧 **Contact Information**
 Email: neha.joshi@example.com
@@ -808,6 +916,7 @@ How can I practice true forgiveness? I understand it intellectually but find it 
   },
   {
     id: 'card-5',
+    cardNumber: 5,
     title: 'Kiran Mehta',
     content: `📧 **Contact Information**
 Email: kiran.mehta@example.com
@@ -1580,7 +1689,7 @@ Category: ${categoryValue}`;
     }
 
     // Create the card
-    const cardData: Omit<Card, 'id' | 'createdAt'> = {
+    const cardData: Omit<Card, 'id' | 'createdAt' | 'cardNumber'> = {
       title: cardTemplate?.titlePrefix ? `${cardTemplate.titlePrefix} ${titleValue}` : titleValue,
       content: enhancedContent,
       column: defaultColumn,

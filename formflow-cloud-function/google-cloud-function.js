@@ -7,6 +7,45 @@ initializeApp();
 const db = getFirestore();
 
 /**
+ * Get next card number for a board using Firestore transaction
+ */
+async function getNextCardNumber(boardId) {
+  const counterDocId = `card_counter_${boardId}`;
+  const counterRef = db.collection('counters').doc(counterDocId);
+  
+  try {
+    const result = await db.runTransaction(async (transaction) => {
+      const counterDoc = await transaction.get(counterRef);
+      
+      if (!counterDoc.exists) {
+        // First card for this board
+        transaction.set(counterRef, {
+          boardId: boardId,
+          lastCardNumber: 1,
+          updatedAt: new Date().toISOString(),
+        });
+        return 1;
+      } else {
+        // Increment existing counter
+        const currentNumber = counterDoc.data().lastCardNumber || 0;
+        const nextNumber = currentNumber + 1;
+        transaction.update(counterRef, {
+          lastCardNumber: nextNumber,
+          updatedAt: new Date().toISOString(),
+        });
+        return nextNumber;
+      }
+    });
+    
+    return result;
+  } catch (error) {
+    console.error('Error getting next card number:', error);
+    // Fallback to timestamp-based number if transaction fails
+    return Date.now() % 100000;
+  }
+}
+
+/**
  * Google Cloud Function to handle Google Forms submissions
  * This function receives form data and creates a new card in Firestore
  */
@@ -44,8 +83,31 @@ functions.http('processFormSubmission', async (req, res) => {
       });
     }
 
+    // Check for duplicate submissions using responseId
+    if (formData.responseId) {
+      const existingSubmission = await db.collection('cards')
+        .where('metadata.responseId', '==', formData.responseId)
+        .limit(1)
+        .get();
+      
+      if (!existingSubmission.empty) {
+        const existingCard = existingSubmission.docs[0];
+        console.log('Duplicate submission detected, returning existing card:', existingCard.id);
+        return res.status(200).json({
+          success: true,
+          message: 'Duplicate submission - returning existing card',
+          cardId: existingCard.id,
+          duplicate: true,
+          timestamp: new Date().toISOString()
+        });
+      }
+    }
+
     // Determine board ID (use integrated board if available, otherwise default)
     const targetBoardId = formData.boardId || 'default-board';
+    
+    // Get next card number for this board
+    const cardNumber = await getNextCardNumber(targetBoardId);
     
     // Create card title using participant name (consistent for both Google Forms and DadaBhagwan)
     const cardTitle = `${formData.firstname} ${formData.lastname || ''}`.trim();
@@ -53,6 +115,7 @@ functions.http('processFormSubmission', async (req, res) => {
     // Create card data structure
     const cardData = {
       id: `form_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      cardNumber: cardNumber,
       title: cardTitle,
       content: formatCardContent(formData),
       column: 'online_submitted',
@@ -67,6 +130,7 @@ functions.http('processFormSubmission', async (req, res) => {
         submissionTimestamp: new Date().toISOString(),
         formId: formData.formId || null,
         submissionId: formData.submissionId || null,
+        responseId: formData.responseId || null, // Add responseId for deduplication
         priority: formData.status || 'Medium',
         topic: formData.status || 'General',
         participantName: cardTitle,
