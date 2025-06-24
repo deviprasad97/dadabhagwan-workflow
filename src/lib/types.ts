@@ -28,6 +28,14 @@ export type Board = {
     [key: string]: any;
   };
   columnDefinitions?: ColumnDefinition[];
+  translationSettings?: {
+    defaultLanguage: string; // Default language for new cards (e.g., 'de', 'hi', 'en')
+    targetLanguage: string; // Final target language (e.g., 'gu' for Gujarati)
+    requiresIntermediateTranslation: boolean; // Whether to go through English first
+    intermediateLanguage?: string; // Usually 'en' for English
+    enabledProviders: TranslationProvider[]; // Which AI providers to use
+    autoTranslate: boolean; // Whether to automatically trigger translations
+  };
 };
 
 // Form Builder Types
@@ -266,17 +274,27 @@ export interface Card {
     submissionTimestamp?: string;
     priority?: 'Low' | 'Medium' | 'High' | 'Urgent';
     topic?: string;
+    
+    // Enhanced translation workflow
+    sourceLanguage?: string; // Original language of the content (e.g., 'de', 'hi')
+    targetLanguage?: string; // Final target language (e.g., 'gu')
+    translationFlow?: TranslationStep[]; // Array of translation steps
+    currentTranslationStep?: number; // Index of current step in the flow
+    translationStatus?: 'not_started' | 'in_progress' | 'needs_review' | 'completed';
+    
+    // Legacy fields (kept for backward compatibility)
     gujaratiTranslation?: string;
     approvedTranslation?: string;
+    originalLanguage?: string; // Deprecated in favor of sourceLanguage
+    translatedQuestion?: string; // Deprecated in favor of translationFlow
+    
     formSubmissionId?: string; // Link to the form submission
     // Live view specific fields
-    originalLanguage?: string; // Language the question was asked in
-    translatedQuestion?: string; // Translated version of the question
     isAnswered?: boolean; // Whether the question has been answered
     isLive?: boolean; // Whether the question is currently live
     personName?: string; // Name of the person who asked the question
     [key: string]: any;
-};
+  };
 }
 
 export type ColumnData = {
@@ -305,4 +323,25 @@ export interface SatsangCenter {
   updatedAt: string;
   createdBy: string; // User ID who created this center
   status: 'active' | 'inactive';
+}
+
+// Enhanced translation types
+export type SupportedLanguage = 'en' | 'gu' | 'de' | 'hi' | 'fr' | 'es' | 'it' | 'pt' | 'ru' | 'ja' | 'ko' | 'zh' | 'ar';
+
+export type TranslationProvider = 'genkit' | 'openai' | 'sutra' | 'google-translate';
+
+export interface TranslationStep {
+  id: string;
+  fromLanguage: string;
+  toLanguage: string;
+  originalText: string;
+  translatedText?: string;
+  provider?: TranslationProvider;
+  status: 'pending' | 'in_progress' | 'completed' | 'error' | 'approved';
+  error?: string;
+  confidence?: number; // 0-1 score from translation API
+  createdAt: string;
+  updatedAt: string;
+  createdBy?: string; // User who initiated/approved this step
+  isManuallyEdited?: boolean; // Whether user manually edited the translation
 }

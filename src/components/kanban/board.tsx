@@ -24,6 +24,7 @@ import { BoardSelector } from './board-selector';
 import { CustomFieldsManager } from './custom-fields-manager';
 import { ColumnManager } from './column-manager';
 import { LiveView } from './live-view';
+import { BoardTranslationSettings } from '../forms/board-translation-settings';
 import type { Card, ColumnId, ColumnData, User, Board, ColumnDefinition } from '@/lib/types';
 import { TranslationModal } from './translation-modal';
 import { CardDetailsModal } from './card-details-modal';
@@ -659,6 +660,12 @@ export function KanbanBoard({ selectedBoardId }: KanbanBoardProps) {
 
               {/* Column Manager */}
               <ColumnManager
+                board={currentBoard}
+                onUpdateBoard={handleUpdateBoard}
+              />
+
+              {/* Translation Settings */}
+              <BoardTranslationSettings
                 board={currentBoard}
                 onUpdateBoard={handleUpdateBoard}
               />

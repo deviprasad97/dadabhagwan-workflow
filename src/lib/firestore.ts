@@ -28,8 +28,20 @@ import {
   limit
 } from 'firebase/firestore';
 import { firestore } from './firebase';
-import type { Card, User, ColumnId, Board, Form, FormSubmission, FormTemplate, BoardIntegration, SatsangCenter } from './types';
+import type { Card, User, ColumnId, Board, Form, FormSubmission, FormTemplate, BoardIntegration, SatsangCenter, ColumnDefinition, TranslationProvider } from './types';
 import { mockUsers } from './mock-data';
+
+import { 
+  initializeApp, 
+  getApps, 
+  cert, 
+  type ServiceAccount 
+} from 'firebase-admin/app';
+import { getFirestore as getAdminFirestore } from 'firebase-admin/firestore';
+import { 
+  initializeCardTranslation,
+  LANGUAGE_NAMES 
+} from './translation-service';
 
 // Collections
 const CARDS_COLLECTION = 'cards';
