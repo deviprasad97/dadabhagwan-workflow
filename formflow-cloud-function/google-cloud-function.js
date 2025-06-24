@@ -44,20 +44,35 @@ functions.http('processFormSubmission', async (req, res) => {
       });
     }
 
+    // Determine board ID (use integrated board if available, otherwise default)
+    const targetBoardId = formData.boardId || 'default-board';
+    
+    // Create card title using participant name (consistent for both Google Forms and FormFlow)
+    const cardTitle = `${formData.firstname} ${formData.lastname || ''}`.trim();
+
     // Create card data structure
     const cardData = {
       id: `form_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      title: `${formData.firstname} ${formData.lastname || ''}`.trim(),
+      title: cardTitle,
       content: formatCardContent(formData),
       column: 'online_submitted',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      creatorUid: 'google-forms',
+      creatorUid: 'form-system',
       assigneeUid: null,
+      boardId: targetBoardId,
       metadata: {
-        source: 'google-forms',
+        source: 'formflow_app',
         formData: formData,
-        submissionTimestamp: new Date().toISOString()
+        submissionTimestamp: new Date().toISOString(),
+        formId: formData.formId || null,
+        submissionId: formData.submissionId || null,
+        priority: formData.status || 'Medium',
+        topic: formData.status || 'General',
+        participantName: cardTitle,
+        participantEmail: formData.email || '',
+        participantCity: formData.city || '',
+        participantPhone: formData.telephone || '',
       }
     };
 
@@ -72,12 +87,15 @@ functions.http('processFormSubmission', async (req, res) => {
     await db.collection('audit_logs').add({
       action: 'card_created',
       cardId: cardData.id,
-      userId: 'google-forms',
+      userId: 'form-system',
       timestamp: new Date().toISOString(),
       details: {
-        source: 'google-forms-submission',
+        source: 'formflow-app-submission',
         email: formData.email,
-        name: cardData.title
+        name: `${formData.firstname} ${formData.lastname || ''}`.trim(),
+        formId: formData.formId,
+        submissionId: formData.submissionId,
+        boardId: targetBoardId
       }
     });
 
@@ -98,8 +116,10 @@ functions.http('processFormSubmission', async (req, res) => {
         error: error.message,
         stack: error.stack,
         timestamp: new Date().toISOString(),
-        source: 'google-forms-cloud-function',
-        requestBody: req.body
+        source: 'formflow-cloud-function',
+        requestBody: req.body,
+        formId: req.body?.formId,
+        boardId: req.body?.boardId
       });
     } catch (logError) {
       console.error('Failed to log error:', logError);

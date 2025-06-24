@@ -17,10 +17,12 @@ import {
   type Unsubscribe,
   writeBatch,
   arrayUnion,
-  arrayRemove
+  arrayRemove,
+  increment,
+  deleteField
 } from 'firebase/firestore';
 import { firestore } from './firebase';
-import type { Card, User, ColumnId, Board } from './types';
+import type { Card, User, ColumnId, Board, Form, FormSubmission, FormTemplate, BoardIntegration } from './types';
 import { mockUsers } from './mock-data';
 
 // Collections
@@ -243,6 +245,88 @@ export const cardService = {
     });
     return cards;
   },
+};
+
+// Google Cloud Function Integration
+const callGoogleCloudFunction = async (submission: FormSubmission, form: Form): Promise<void> => {
+  // Default Cloud Function URL - this should be configured via environment variables
+  const cloudFunctionUrl = process.env.NEXT_PUBLIC_GOOGLE_CLOUD_FUNCTION_URL || 'https://your-cloud-function-url/processFormSubmission';
+  
+  try {
+    // Transform form submission data to match your Cloud Function's expected format
+    const cloudFunctionData = {
+      // Basic required fields
+      email: submission.responses['email'] || '',
+      firstname: submission.responses['firstname'] || '',
+      lastname: submission.responses['lastname'] || '',
+      
+      // Additional fields from DadaBhagwan form
+      age: submission.responses['age'] || '',
+      gender: submission.responses['gender'] || '',
+      city: submission.responses['city'] || '',
+      status: submission.responses['status'] || '',
+      gnan_vidhi_year: submission.responses['gnan-vidhi-year'] || submission.responses['gnan_vidhi_year'] || '',
+      english_question: submission.responses['english-question'] || submission.responses['english_question'] || '',
+      telephone: submission.responses['telephone'] || '',
+      remarks: submission.responses['remarks'] || '',
+      
+      // Metadata
+      formId: submission.formId,
+      boardId: submission.boardId,
+      submissionId: submission.id,
+      submittedAt: submission.submittedAt,
+      
+      // Additional context for better card creation
+      formTitle: form.title,
+      boardIntegration: form.boardIntegration,
+    };
+
+    console.log('Calling Google Cloud Function with data:', cloudFunctionData);
+
+    const response = await fetch(cloudFunctionUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(cloudFunctionData),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Cloud Function call failed: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+
+    const result = await response.json();
+    console.log('Cloud Function response:', result);
+
+    // Update submission status to processed if card was created successfully
+    if (result.success && result.cardId) {
+      await formService.updateSubmission(submission.id, {
+        cardId: result.cardId,
+        status: 'processed',
+        metadata: {
+          ...submission.metadata,
+          cloudFunctionResponse: result,
+          processedAt: new Date().toISOString(),
+        },
+      });
+    }
+
+  } catch (error) {
+    console.error('Error calling Google Cloud Function:', error);
+    
+    // Update submission with error status
+    await formService.updateSubmission(submission.id, {
+      status: 'error',
+      metadata: {
+        ...submission.metadata,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        errorAt: new Date().toISOString(),
+      },
+    });
+    
+    throw error; // Re-throw to be caught by the calling function
+  }
 };
 
 // User operations
@@ -760,4 +844,831 @@ What is the meaning of true happiness? How is it different from temporary pleasu
       }
     }
   }
-]; 
+];
+
+// Form operations
+export const formService = {
+  // Create a new form
+  createForm: async (form: Omit<Form, 'id' | 'createdAt' | 'updatedAt' | 'submissionCount'>): Promise<string> => {
+    // Ensure default templates exist for this user
+    try {
+      const existingTemplates = await templateService.getQATemplates();
+      if (existingTemplates.length === 0) {
+        await templateService.createDefaultTemplates(form.creatorUid);
+      }
+    } catch (error) {
+      console.error('Error creating default templates:', error);
+      // Continue with form creation even if template creation fails
+    }
+
+    // Clean the form data to remove undefined values
+    const cleanFormData: any = {
+      submissionCount: 0,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    };
+
+    // Only include defined values
+    Object.keys(form).forEach(key => {
+      if (form[key as keyof typeof form] !== undefined) {
+        cleanFormData[key] = form[key as keyof typeof form];
+      }
+    });
+
+    const docRef = await addDoc(collection(firestore, 'forms'), cleanFormData);
+    return docRef.id;
+  },
+
+  // Get form by ID
+  getForm: async (formId: string): Promise<Form | null> => {
+    const formRef = doc(firestore, 'forms', formId);
+    const formSnap = await getDoc(formRef);
+    
+    if (formSnap.exists()) {
+      const data = formSnap.data();
+      return {
+        id: formSnap.id,
+        title: data.title,
+        description: data.description,
+        templateId: data.templateId,
+        boardId: data.boardId,
+        boardIntegration: data.boardIntegration,
+        fields: data.fields || [],
+        settings: data.settings || {},
+        status: data.status,
+        creatorUid: data.creatorUid,
+        sharedWith: data.sharedWith || [],
+        submissionCount: data.submissionCount || 0,
+        createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+        updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt || data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+      };
+    }
+    return null;
+  },
+
+  // Get forms accessible to a user
+  getUserForms: async (userId: string, userRole: 'Admin' | 'Editor' | 'Viewer'): Promise<Form[]> => {
+    let queries = [];
+    
+    if (userRole === 'Admin') {
+      // Admins can see all forms
+      queries.push(query(collection(firestore, 'forms'), orderBy('updatedAt', 'desc')));
+    } else {
+      // Users can see forms they created
+      queries.push(query(
+        collection(firestore, 'forms'),
+        where('creatorUid', '==', userId),
+        orderBy('updatedAt', 'desc')
+      ));
+      
+      // Users can see forms shared with them
+      queries.push(query(
+        collection(firestore, 'forms'),
+        where('sharedWith', 'array-contains', userId),
+        orderBy('updatedAt', 'desc')
+      ));
+    }
+    
+    const forms: Form[] = [];
+    const seenIds = new Set<string>();
+    
+    for (const q of queries) {
+      const snapshot = await getDocs(q);
+      snapshot.forEach((doc) => {
+        if (seenIds.has(doc.id)) return; // Avoid duplicates
+        seenIds.add(doc.id);
+        
+        const data = doc.data();
+        forms.push({
+          id: doc.id,
+          title: data.title,
+          description: data.description,
+          templateId: data.templateId,
+          boardId: data.boardId,
+          boardIntegration: data.boardIntegration,
+          fields: data.fields || [],
+          settings: data.settings || {},
+          status: data.status,
+          creatorUid: data.creatorUid,
+          sharedWith: data.sharedWith || [],
+          submissionCount: data.submissionCount || 0,
+          createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+          updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt || data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+        });
+      });
+    }
+    
+    // Sort by updatedAt desc
+    return forms.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+  },
+
+  // Get forms for a specific board
+  getBoardForms: async (boardId: string): Promise<Form[]> => {
+    const q = query(
+      collection(firestore, 'forms'),
+      where('boardId', '==', boardId),
+      orderBy('updatedAt', 'desc')
+    );
+    
+    const snapshot = await getDocs(q);
+    const forms: Form[] = [];
+    
+    snapshot.forEach((doc) => {
+      const data = doc.data();
+      forms.push({
+        id: doc.id,
+        title: data.title,
+        description: data.description,
+        templateId: data.templateId,
+        boardId: data.boardId,
+        boardIntegration: data.boardIntegration,
+        fields: data.fields || [],
+        settings: data.settings || {},
+        status: data.status,
+        creatorUid: data.creatorUid,
+        sharedWith: data.sharedWith || [],
+        submissionCount: data.submissionCount || 0,
+        createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+        updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt || data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+      });
+    });
+    
+    return forms;
+  },
+
+  // Update a form
+  updateForm: async (formId: string, updates: Partial<Form>): Promise<void> => {
+    const formRef = doc(firestore, 'forms', formId);
+    
+    // Clean the update data to remove undefined values
+    const cleanUpdateData: any = {
+      updatedAt: serverTimestamp(),
+    };
+
+    // Only include defined values
+    Object.keys(updates).forEach(key => {
+      if (updates[key as keyof typeof updates] !== undefined) {
+        cleanUpdateData[key] = updates[key as keyof typeof updates];
+      }
+    });
+
+    await updateDoc(formRef, cleanUpdateData);
+  },
+
+  // Delete a form
+  deleteForm: async (formId: string): Promise<void> => {
+    const formRef = doc(firestore, 'forms', formId);
+    await deleteDoc(formRef);
+  },
+
+  // Duplicate a form
+  duplicateForm: async (formId: string, newTitle: string, creatorUid: string): Promise<string> => {
+    const originalForm = await formService.getForm(formId);
+    if (!originalForm) throw new Error('Form not found');
+    
+    const duplicatedForm = {
+      ...originalForm,
+      title: newTitle,
+      status: 'draft' as const,
+      creatorUid,
+      sharedWith: [],
+      boardId: undefined, // Reset board assignment
+    };
+    
+    delete (duplicatedForm as any).id;
+    delete (duplicatedForm as any).createdAt;
+    delete (duplicatedForm as any).updatedAt;
+    delete (duplicatedForm as any).submissionCount;
+    
+    return await formService.createForm(duplicatedForm);
+  },
+
+  // Share form with users
+  shareForm: async (formId: string, userIds: string[]): Promise<void> => {
+    const formRef = doc(firestore, 'forms', formId);
+    await updateDoc(formRef, {
+      sharedWith: arrayUnion(...userIds),
+      updatedAt: serverTimestamp(),
+    });
+  },
+
+  // Unshare form from users
+  unshareForm: async (formId: string, userIds: string[]): Promise<void> => {
+    const formRef = doc(firestore, 'forms', formId);
+    await updateDoc(formRef, {
+      sharedWith: arrayRemove(...userIds),
+      updatedAt: serverTimestamp(),
+    });
+  },
+
+  // Check if user has access to form
+  hasFormAccess: async (formId: string, userId: string, userRole: 'Admin' | 'Editor' | 'Viewer'): Promise<boolean> => {
+    if (userRole === 'Admin') return true;
+    
+    const form = await formService.getForm(formId);
+    if (!form) return false;
+    
+    return form.creatorUid === userId || form.sharedWith.includes(userId);
+  },
+
+  // Publish/Unpublish forms
+  publishForm: async (formId: string): Promise<void> => {
+    const formRef = doc(firestore, 'forms', formId);
+    await updateDoc(formRef, {
+      status: 'published',
+      publishedAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+  },
+
+  unpublishForm: async (formId: string): Promise<void> => {
+    const formRef = doc(firestore, 'forms', formId);
+    await updateDoc(formRef, {
+      status: 'draft',
+      publishedAt: deleteField(),
+      updatedAt: serverTimestamp(),
+    });
+  },
+
+  // Get public form (for public submission)
+  getPublicForm: async (formId: string): Promise<Form | null> => {
+    const form = await formService.getForm(formId);
+    if (!form || form.status !== 'published') return null;
+    
+    // Check access settings
+    if (form.access?.startDate && new Date(form.access.startDate) > new Date()) return null;
+    if (form.access?.endDate && new Date(form.access.endDate) < new Date()) return null;
+    if (form.access?.maxSubmissions && (form.submissionCount || 0) >= form.access.maxSubmissions) return null;
+    
+    return form;
+  },
+
+  // Submit form response
+  submitForm: async (submission: Omit<FormSubmission, 'id' | 'submittedAt'>): Promise<string> => {
+    const docRef = await addDoc(collection(firestore, 'form_submissions'), {
+      ...submission,
+      status: 'pending',
+      submittedAt: serverTimestamp(),
+    });
+    
+    // Increment submission count
+    const formRef = doc(firestore, 'forms', submission.formId);
+    await updateDoc(formRef, {
+      submissionCount: increment(1),
+    });
+
+    // Auto-create card via Google Cloud Function if board integration is enabled
+    try {
+      const form = await formService.getForm(submission.formId);
+      if (form?.boardIntegration?.enabled && form.boardIntegration.autoCreateCards && form.boardId) {
+        const fullSubmission: FormSubmission = {
+          id: docRef.id,
+          ...submission,
+          submittedAt: new Date().toISOString(),
+          status: 'pending',
+        };
+        
+        // Call Google Cloud Function to create card
+        await callGoogleCloudFunction(fullSubmission, form);
+      }
+    } catch (error) {
+      console.error('Error calling Google Cloud Function for card creation:', error);
+      // Don't fail the submission if card creation fails
+    }
+    
+    return docRef.id;
+  },
+
+  // Get form submissions
+  getFormSubmissions: async (formId: string): Promise<FormSubmission[]> => {
+    const q = query(
+      collection(firestore, 'form_submissions'),
+      where('formId', '==', formId),
+      orderBy('submittedAt', 'desc')
+    );
+    
+    const snapshot = await getDocs(q);
+    const submissions: FormSubmission[] = [];
+    
+    snapshot.forEach((doc) => {
+      const data = doc.data();
+      submissions.push({
+        id: doc.id,
+        formId: data.formId,
+        boardId: data.boardId,
+        responses: data.responses || {},
+        submitterInfo: data.submitterInfo,
+        cardId: data.cardId,
+        status: data.status || 'pending',
+        metadata: data.metadata,
+        submittedAt: data.submittedAt?.toDate?.()?.toISOString() || data.submittedAt,
+      });
+    });
+    
+    return submissions;
+  },
+
+  // Update submission
+  updateSubmission: async (submissionId: string, updates: Partial<FormSubmission>): Promise<void> => {
+    const submissionRef = doc(firestore, 'form_submissions', submissionId);
+    await updateDoc(submissionRef, updates);
+  },
+
+  // Delete submission
+  deleteSubmission: async (submissionId: string): Promise<void> => {
+    const submissionRef = doc(firestore, 'form_submissions', submissionId);
+    await deleteDoc(submissionRef);
+  },
+};
+
+// Form Template Service
+export const templateService = {
+  // Clear all existing templates and recreate defaults
+  resetDefaultTemplates: async (creatorUid: string): Promise<void> => {
+    try {
+      // Clear existing default templates
+      const existingTemplatesQuery = query(
+        collection(firestore, 'form_templates'),
+        where('isDefault', '==', true)
+      );
+      const existingSnapshot = await getDocs(existingTemplatesQuery);
+      
+      // Delete existing default templates
+      const deletePromises = existingSnapshot.docs.map(doc => deleteDoc(doc.ref));
+      await Promise.all(deletePromises);
+      
+      console.log('Cleared existing default templates');
+      
+      // Create new default templates
+      await templateService.createDefaultTemplates(creatorUid);
+      console.log('Created new default templates');
+    } catch (error) {
+      console.error('Error resetting templates:', error);
+      throw error;
+    }
+  },
+
+  // Create default Q&A templates
+  createDefaultTemplates: async (creatorUid: string): Promise<void> => {
+    const defaultTemplates: Omit<FormTemplate, 'id' | 'createdAt' | 'updatedAt'>[] = [
+      {
+        name: 'DadaBhagwan Q&A Form - Official',
+        description: 'Official form template matching Google Forms structure for Gnani Pujyashree questions',
+        category: 'qa',
+        fields: [
+          {
+            id: 'email',
+            type: 'email',
+            label: 'Email',
+            description: 'Your email address',
+            placeholder: 'your@email.com',
+            validation: { required: true },
+            order: 1,
+          },
+          {
+            id: 'firstname',
+            type: 'text',
+            label: 'Firstname',
+            description: 'Your first name',
+            placeholder: 'Enter your first name',
+            validation: { required: true, maxLength: 50 },
+            order: 2,
+          },
+          {
+            id: 'lastname',
+            type: 'text',
+            label: 'Lastname',
+            description: 'Your last name',
+            placeholder: 'Enter your last name',
+            validation: { required: true, maxLength: 50 },
+            order: 3,
+          },
+          {
+            id: 'age',
+            type: 'number',
+            label: 'Age',
+            description: 'Your age',
+            placeholder: 'Enter your age',
+            validation: { required: true, min: 1, max: 120 },
+            order: 4,
+          },
+          {
+            id: 'gender',
+            type: 'radio',
+            label: 'Gender',
+            description: 'Select your gender',
+            options: [
+              { id: 'male', label: 'Male', value: 'Male' },
+              { id: 'female', label: 'Female', value: 'Female' },
+            ],
+            validation: { required: true },
+            order: 5,
+          },
+          {
+            id: 'city',
+            type: 'text',
+            label: 'City',
+            description: 'Your city of residence',
+            placeholder: 'Enter your city',
+            validation: { required: true, maxLength: 100 },
+            order: 6,
+          },
+          {
+            id: 'status',
+            type: 'radio',
+            label: 'Status',
+            description: 'Your participation status',
+            options: [
+              { id: 'new-participant', label: 'I am a new participant', value: 'I am a new participant' },
+              { id: 'mahatma', label: 'I am a Mahatma (Reviewer)', value: 'I am a Mahatma (Reviewer)' },
+            ],
+            validation: { required: true },
+            order: 7,
+          },
+          {
+            id: 'gnan-vidhi-year',
+            type: 'text',
+            label: 'When did you receive your first Gnan Vidhi? Select the year 2025, when you are a new participant.',
+            description: 'Enter the year you received your first Gnan Vidhi (use 2025 if you are a new participant)',
+            placeholder: '2025',
+            defaultValue: '2025',
+            validation: { required: true },
+            order: 8,
+          },
+          {
+            id: 'english-question',
+            type: 'textarea',
+            label: 'ENGLISH - Your question to Gnani Pujyashree. Please keep it short and concise. Thank you.',
+            description: 'Write your question in English - keep it short and concise',
+            placeholder: 'Enter your question to Gnani Pujyashree...',
+            validation: { required: true, maxLength: 1000 },
+            order: 9,
+          },
+          {
+            id: 'telephone',
+            type: 'phone',
+            label: 'Telephone number (in case of queries) i.e. +1-652-765-1234',
+            description: 'Your phone number with country code',
+            placeholder: '+1-652-765-1234',
+            validation: { required: true },
+            order: 10,
+          },
+          {
+            id: 'remarks',
+            type: 'textarea',
+            label: 'Remarks',
+            description: 'Any additional remarks (optional)',
+            placeholder: 'Enter any additional remarks...',
+            validation: { required: false, maxLength: 500 },
+            order: 11,
+          },
+        ],
+        boardMapping: {
+          titleField: 'english-question',
+          contentField: 'english-question',
+          priorityField: 'status',
+          categoryField: 'status',
+        },
+        requiredForBoard: true,
+        isDefault: true,
+        creatorUid,
+      },
+      {
+        name: 'DadaBhagwan Q&A Form - Simplified',
+        description: 'Simplified form for quick questions to Gnani Pujyashree',
+        category: 'qa',
+        fields: [
+          {
+            id: 'email',
+            type: 'email',
+            label: 'Email',
+            description: 'Your email address',
+            placeholder: 'your@email.com',
+            validation: { required: true },
+            order: 1,
+          },
+          {
+            id: 'name',
+            type: 'text',
+            label: 'Name',
+            description: 'Your full name',
+            placeholder: 'Enter your full name',
+            validation: { required: true, maxLength: 100 },
+            order: 2,
+          },
+          {
+            id: 'city',
+            type: 'text',
+            label: 'City',
+            description: 'Your city of residence',
+            placeholder: 'Enter your city',
+            validation: { required: true, maxLength: 100 },
+            order: 3,
+          },
+          {
+            id: 'status',
+            type: 'radio',
+            label: 'Status',
+            description: 'Your participation status',
+            options: [
+              { id: 'new-participant', label: 'I am a new participant', value: 'I am a new participant' },
+              { id: 'mahatma', label: 'I am a Mahatma (Reviewer)', value: 'I am a Mahatma (Reviewer)' },
+            ],
+            validation: { required: true },
+            order: 4,
+          },
+          {
+            id: 'english-question',
+            type: 'textarea',
+            label: 'ENGLISH - Your question to Gnani Pujyashree. Please keep it short and concise. Thank you.',
+            description: 'Write your question in English - keep it short and concise',
+            placeholder: 'Enter your question to Gnani Pujyashree...',
+            validation: { required: true, maxLength: 1000 },
+            order: 5,
+          },
+          {
+            id: 'telephone',
+            type: 'phone',
+            label: 'Telephone number (in case of queries)',
+            description: 'Your phone number with country code (optional)',
+            placeholder: '+1-652-765-1234',
+            validation: { required: false },
+            order: 6,
+          },
+        ],
+        boardMapping: {
+          titleField: 'english-question',
+          contentField: 'english-question',
+          priorityField: 'status',
+          categoryField: 'status',
+        },
+        requiredForBoard: true,
+        isDefault: true,
+        creatorUid,
+      },
+    ];
+
+    for (const template of defaultTemplates) {
+      await addDoc(collection(firestore, 'form_templates'), {
+        ...template,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    }
+  },
+
+  // Get all templates
+  getTemplates: async (userUid?: string): Promise<FormTemplate[]> => {
+    let q;
+    if (userUid) {
+      q = query(
+        collection(firestore, 'form_templates'),
+        where('creatorUid', '==', userUid),
+        orderBy('createdAt', 'desc')
+      );
+    } else {
+      q = query(
+        collection(firestore, 'form_templates'),
+        orderBy('isDefault', 'desc'),
+        orderBy('createdAt', 'desc')
+      );
+    }
+
+    const snapshot = await getDocs(q);
+    const templates: FormTemplate[] = [];
+
+    snapshot.forEach((doc) => {
+      const data = doc.data();
+      templates.push({
+        id: doc.id,
+        name: data.name,
+        description: data.description,
+        category: data.category,
+        fields: data.fields || [],
+        boardMapping: data.boardMapping,
+        requiredForBoard: data.requiredForBoard || false,
+        isDefault: data.isDefault || false,
+        creatorUid: data.creatorUid,
+        createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+        updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt,
+      });
+    });
+
+    return templates;
+  },
+
+  // Get template by ID
+  getTemplate: async (templateId: string): Promise<FormTemplate | null> => {
+    const templateDoc = await getDoc(doc(firestore, 'form_templates', templateId));
+    if (!templateDoc.exists()) return null;
+
+    const data = templateDoc.data();
+    return {
+      id: templateDoc.id,
+      name: data.name,
+      description: data.description,
+      category: data.category,
+      fields: data.fields || [],
+      boardMapping: data.boardMapping,
+      requiredForBoard: data.requiredForBoard || false,
+      isDefault: data.isDefault || false,
+      creatorUid: data.creatorUid,
+      createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+      updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt,
+    };
+  },
+
+  // Create template
+  createTemplate: async (template: Omit<FormTemplate, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> => {
+    const docRef = await addDoc(collection(firestore, 'form_templates'), {
+      ...template,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+    return docRef.id;
+  },
+
+  // Get Q&A templates for board integration
+  getQATemplates: async (): Promise<FormTemplate[]> => {
+    const q = query(
+      collection(firestore, 'form_templates'),
+      where('category', '==', 'qa'),
+      where('requiredForBoard', '==', true),
+      orderBy('isDefault', 'desc'),
+      orderBy('createdAt', 'desc')
+    );
+
+    const snapshot = await getDocs(q);
+    const templates: FormTemplate[] = [];
+
+    snapshot.forEach((doc) => {
+      const data = doc.data();
+      templates.push({
+        id: doc.id,
+        name: data.name,
+        description: data.description,
+        category: data.category,
+        fields: data.fields || [],
+        boardMapping: data.boardMapping,
+        requiredForBoard: data.requiredForBoard || false,
+        isDefault: data.isDefault || false,
+        creatorUid: data.creatorUid,
+        createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+        updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt,
+      });
+    });
+
+    return templates;
+  },
+};
+
+// Board Integration Service
+export const boardIntegrationService = {
+  // Associate form with board and set up integration
+  associateFormWithBoard: async (formId: string, boardId: string, integration: BoardIntegration): Promise<void> => {
+    const formRef = doc(firestore, 'forms', formId);
+    await updateDoc(formRef, {
+      boardId,
+      boardIntegration: integration,
+      updatedAt: serverTimestamp(),
+    });
+  },
+
+  // Create card from form submission
+  createCardFromSubmission: async (submission: FormSubmission, form: Form): Promise<string | null> => {
+    if (!form.boardIntegration?.enabled || !form.boardId) return null;
+
+    const { fieldMapping, cardTemplate, defaultColumn } = form.boardIntegration;
+    
+    // Extract values from submission
+    const titleValue = submission.responses[fieldMapping.titleField] || 'Untitled Question';
+    const contentValue = submission.responses[fieldMapping.contentField] || 'No details provided';
+    const priorityValue = fieldMapping.priorityField ? (submission.responses[fieldMapping.priorityField] || cardTemplate?.defaultPriority || 'Medium') : (cardTemplate?.defaultPriority || 'Medium');
+    const categoryValue = fieldMapping.categoryField ? (submission.responses[fieldMapping.categoryField] || 'General') : 'General';
+
+    // Format card content
+    let formattedContent = contentValue;
+    if (cardTemplate?.contentFormat) {
+      formattedContent = cardTemplate.contentFormat
+        .replace('{content}', contentValue)
+        .replace('{priority}', priorityValue)
+        .replace('{category}', categoryValue);
+    }
+
+    // Create enhanced card content for DadaBhagwan forms
+    let enhancedContent = formattedContent;
+    if (submission.responses['firstname'] && submission.responses['lastname']) {
+      const name = `${submission.responses['firstname']} ${submission.responses['lastname']}`;
+      const email = submission.responses['email'] || 'No email provided';
+      const city = submission.responses['city'] || 'No city provided';
+      const age = submission.responses['age'] || 'No age provided';
+      const gender = submission.responses['gender'] || 'No gender provided';
+      const telephone = submission.responses['telephone'] || 'No phone provided';
+      
+      enhancedContent = `Question: ${contentValue}
+
+Participant Details:
+Name: ${name}
+Email: ${email}
+City: ${city}
+Age: ${age}
+Gender: ${gender}
+Phone: ${telephone}
+Status: ${priorityValue}
+
+Category: ${categoryValue}`;
+    }
+
+    // Create the card
+    const cardData: Omit<Card, 'id' | 'createdAt'> = {
+      title: cardTemplate?.titlePrefix ? `${cardTemplate.titlePrefix} ${titleValue}` : titleValue,
+      content: enhancedContent,
+      column: defaultColumn,
+      creatorUid: 'form-system',
+      assigneeUid: cardTemplate?.defaultAssignee,
+      boardId: form.boardId,
+      updatedAt: new Date().toISOString(),
+      metadata: {
+        source: 'form_submission',
+        formData: submission.responses,
+        formSubmissionId: submission.id,
+        submissionTimestamp: submission.submittedAt,
+        priority: priorityValue,
+        topic: categoryValue,
+        originalFormId: form.id,
+        participantName: submission.responses['firstname'] && submission.responses['lastname'] 
+          ? `${submission.responses['firstname']} ${submission.responses['lastname']}` 
+          : submission.responses['name'] || 'Unknown',
+        participantEmail: submission.responses['email'] || '',
+        participantCity: submission.responses['city'] || '',
+        participantPhone: submission.responses['telephone'] || '',
+      },
+    };
+
+    const cardId = await cardService.addCard(cardData);
+
+    // Update submission with card reference
+    await formService.updateSubmission(submission.id, {
+      cardId,
+      status: 'processed',
+    });
+
+    return cardId;
+  },
+
+  // Process pending submissions for a form
+  processPendingSubmissions: async (formId: string): Promise<number> => {
+    const form = await formService.getForm(formId);
+    if (!form || !form.boardIntegration?.enabled) return 0;
+
+    const submissions = await formService.getFormSubmissions(formId);
+    const pendingSubmissions = submissions.filter(s => s.status === 'pending');
+
+    let processedCount = 0;
+    for (const submission of pendingSubmissions) {
+      try {
+        await boardIntegrationService.createCardFromSubmission(submission, form);
+        processedCount++;
+      } catch (error) {
+        console.error(`Failed to process submission ${submission.id}:`, error);
+      }
+    }
+
+    return processedCount;
+  },
+
+  // Get forms associated with a board
+  getBoardIntegratedForms: async (boardId: string): Promise<Form[]> => {
+    const q = query(
+      collection(firestore, 'forms'),
+      where('boardId', '==', boardId),
+      where('boardIntegration.enabled', '==', true),
+      orderBy('updatedAt', 'desc')
+    );
+
+    const snapshot = await getDocs(q);
+    const forms: Form[] = [];
+
+    snapshot.forEach((doc) => {
+      const data = doc.data();
+      forms.push({
+        id: doc.id,
+        title: data.title,
+        description: data.description,
+        templateId: data.templateId,
+        boardId: data.boardId,
+        boardIntegration: data.boardIntegration,
+        fields: data.fields || [],
+        settings: data.settings || {},
+        status: data.status,
+        creatorUid: data.creatorUid,
+        sharedWith: data.sharedWith || [],
+        submissionCount: data.submissionCount || 0,
+        createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+        updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt || data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+      });
+    });
+
+    return forms;
+  },
+}; 

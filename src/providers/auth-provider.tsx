@@ -10,6 +10,7 @@ import {
   User as FirebaseUser,
 } from 'firebase/auth';
 import { auth, googleProvider } from '@/lib/firebase';
+import { userService } from '@/lib/firestore';
 import { useToast } from '@/hooks/use-toast';
 
 interface AuthContextType {
@@ -43,39 +44,80 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     // This effect runs once on mount to set up the auth state listener
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser: FirebaseUser | null) => {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: FirebaseUser | null) => {
       console.log('Auth state changed:', firebaseUser ? 'User logged in' : 'No user');
       if (firebaseUser) {
-        // If a user is found, map them to our app's user type.
-        const mockUser = mockUsers.find(
-          (u) => u.email === firebaseUser.email
-        );
-        
-        // For testing: assign Admin role to specific emails, otherwise default based on mock data or Viewer
-        let role: 'Admin' | 'Editor' | 'Viewer' = 'Viewer';
-        
-        // List of admin emails for testing - add your email here
-        const adminEmails = [
-          'tripathy.devi7@gmail.com',
-          'deviprasadt97@gmail.com',
-          'admin@example.com'
-        ];
-        
-        if (adminEmails.includes(firebaseUser.email || '')) {
-          role = 'Admin';
-        } else if (mockUser) {
-          role = mockUser.role;
+        try {
+          // First, try to get existing user from Firestore
+          const existingUser = await userService.getUser(firebaseUser.uid);
+          
+          let role: 'Admin' | 'Editor' | 'Viewer' = 'Viewer';
+          
+          if (existingUser) {
+            // User exists in Firestore, use their existing role
+            role = existingUser.role;
+            console.log('Using existing user role from Firestore:', role);
+          } else {
+            // New user, assign default role based on email
+            console.log('New user, assigning default role...');
+            
+            // Check if user is in mock data
+            const mockUser = mockUsers.find(
+              (u) => u.email === firebaseUser.email
+            );
+            
+            // List of admin emails for testing - add your email here
+            const adminEmails = [
+              'tripathy.devi7@gmail.com',
+              'deviprasadt97@gmail.com',
+              'admin@example.com'
+            ];
+            
+            if (adminEmails.includes(firebaseUser.email || '')) {
+              role = 'Admin';
+            } else if (mockUser) {
+              role = mockUser.role;
+            }
+            // else defaults to 'Viewer'
+          }
+          
+          const appUser: User = {
+            uid: firebaseUser.uid,
+            name: firebaseUser.displayName || existingUser?.name || 'Anonymous',
+            email: firebaseUser.email || '',
+            avatarUrl: firebaseUser.photoURL || existingUser?.avatarUrl || `https://placehold.co/40x40.png`,
+            role: role,
+          };
+          console.log('Setting user:', appUser);
+          
+          // Create or update user in Firestore (but preserve existing role if user exists)
+          if (!existingUser) {
+            // Only create new user if they don't exist
+            await userService.upsertUser(appUser);
+            console.log('New user created in Firestore:', appUser.email);
+          } else {
+            // Update user info but keep existing role
+            const updateData = {
+              ...appUser,
+              role: existingUser.role // Preserve existing role
+            };
+            await userService.upsertUser(updateData);
+            console.log('Existing user updated in Firestore (role preserved):', appUser.email);
+          }
+          
+          setUser(appUser);
+        } catch (error) {
+          console.error('Error handling user authentication:', error);
+          // Fallback: create user with basic info
+          const fallbackUser: User = {
+            uid: firebaseUser.uid,
+            name: firebaseUser.displayName || 'Anonymous',
+            email: firebaseUser.email || '',
+            avatarUrl: firebaseUser.photoURL || `https://placehold.co/40x40.png`,
+            role: 'Viewer',
+          };
+          setUser(fallbackUser);
         }
-        
-        const appUser: User = {
-          uid: firebaseUser.uid,
-          name: firebaseUser.displayName || 'Anonymous',
-          email: firebaseUser.email || '',
-          avatarUrl: firebaseUser.photoURL || `https://placehold.co/40x40.png`,
-          role: role,
-        };
-        console.log('Setting user:', appUser);
-        setUser(appUser);
       } else {
         // If no user is found, set the user to null.
         console.log('Setting user to null');

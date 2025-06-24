@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { BookOpenCheck, LogOut, Shield, Home, Grid3X3 } from 'lucide-react';
+import { BookOpenCheck, LogOut, Shield, Home, Grid3X3, FileText } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 
@@ -29,6 +29,7 @@ export function Header() {
   const isOnAdminPage = pathname === '/admin';
   const isOnBoardsPage = pathname === '/boards';
   const isOnHomePage = pathname === '/';
+  const isOnFormsPage = pathname.startsWith('/forms');
 
   const getInitials = (name: string) => {
     return name
@@ -64,6 +65,16 @@ export function Header() {
               <Link href="/boards" className="flex items-center gap-2">
                 <Grid3X3 className="h-4 w-4" />
                 All Boards
+              </Link>
+            </Button>
+          )}
+          
+          {/* Forms Page Link */}
+          {!isOnFormsPage && (
+            <Button variant="outline" size="sm" asChild>
+              <Link href="/forms" className="flex items-center gap-2">
+                <FileText className="h-4 w-4" />
+                Forms
               </Link>
             </Button>
           )}
@@ -117,6 +128,16 @@ export function Header() {
                 <Link href="/boards" className="flex items-center">
                   <Grid3X3 className="mr-2 h-4 w-4" />
                   <span>All Boards</span>
+                </Link>
+              </DropdownMenuItem>
+            )}
+            
+            {/* Forms Link */}
+            {!isOnFormsPage && (
+              <DropdownMenuItem asChild>
+                <Link href="/forms" className="flex items-center">
+                  <FileText className="mr-2 h-4 w-4" />
+                  <span>Forms</span>
                 </Link>
               </DropdownMenuItem>
             )}

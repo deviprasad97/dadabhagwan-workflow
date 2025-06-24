@@ -228,12 +228,20 @@ export function CardDetailsModal({
       delete metadata.priority;
     }
 
+    // Create base card object without assigneeUid first
     const updatedCard: Card = {
       ...card,
-      assigneeUid: adminFields.assigneeUid,
       metadata,
       updatedAt: new Date().toISOString()
     };
+
+    // Only add assigneeUid if it has a value, otherwise remove it entirely
+    if (adminFields.assigneeUid) {
+      updatedCard.assigneeUid = adminFields.assigneeUid;
+    } else {
+      // Remove assigneeUid field entirely if it's undefined/null
+      delete updatedCard.assigneeUid;
+    }
 
     onSave(updatedCard);
     setIsEditing(false);
@@ -780,10 +788,10 @@ export function CardDetailsModal({
                   </Label>
                   {isEditing && canAssign ? (
                     <Select
-                      value={adminFields.assigneeUid || ""}
+                      value={adminFields.assigneeUid || "unassigned"}
                       onValueChange={(value) => setAdminFields(prev => ({ 
                         ...prev, 
-                        assigneeUid: value === "" ? undefined : value 
+                        assigneeUid: value === "unassigned" ? undefined : value 
                       }))}
                       disabled={loadingUsers}
                     >
@@ -791,7 +799,7 @@ export function CardDetailsModal({
                         <SelectValue placeholder={loadingUsers ? "Loading users..." : "Select assignee"} />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">
+                        <SelectItem value="unassigned">
                           <div className="flex items-center gap-2">
                             <UserMinus className="h-4 w-4 text-muted-foreground" />
                             <span>Unassigned</span>
