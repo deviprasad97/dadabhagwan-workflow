@@ -22,7 +22,7 @@ import {
   deleteField
 } from 'firebase/firestore';
 import { firestore } from './firebase';
-import type { Card, User, ColumnId, Board, Form, FormSubmission, FormTemplate, BoardIntegration } from './types';
+import type { Card, User, ColumnId, Board, Form, FormSubmission, FormTemplate, BoardIntegration, SatsangCenter } from './types';
 import { mockUsers } from './mock-data';
 
 // Collections
@@ -1670,5 +1670,142 @@ Category: ${categoryValue}`;
     });
 
     return forms;
+  },
+};
+
+// Satsang Centers Service
+export const centersService = {
+  // Create a new center
+  createCenter: async (center: Omit<SatsangCenter, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> => {
+    const docRef = await addDoc(collection(firestore, 'centers'), {
+      ...center,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+    return docRef.id;
+  },
+
+  // Get all centers
+  getCenters: async (): Promise<SatsangCenter[]> => {
+    const q = query(
+      collection(firestore, 'centers'),
+      where('status', '==', 'active'),
+      orderBy('country'),
+      orderBy('state'),
+      orderBy('city')
+    );
+
+    const snapshot = await getDocs(q);
+    const centers: SatsangCenter[] = [];
+
+    snapshot.forEach((doc) => {
+      const data = doc.data();
+      centers.push({
+        id: doc.id,
+        name: data.name,
+        city: data.city,
+        state: data.state,
+        country: data.country,
+        contactPerson: data.contactPerson,
+        contactInfo: data.contactInfo || {},
+        status: data.status || 'active',
+        createdBy: data.createdBy,
+        createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+        updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt,
+      });
+    });
+
+    return centers;
+  },
+
+  // Get center by ID
+  getCenter: async (centerId: string): Promise<SatsangCenter | null> => {
+    const docRef = doc(firestore, 'centers', centerId);
+    const snapshot = await getDoc(docRef);
+
+    if (snapshot.exists()) {
+      const data = snapshot.data();
+      return {
+        id: snapshot.id,
+        name: data.name,
+        city: data.city,
+        state: data.state,
+        country: data.country,
+        contactPerson: data.contactPerson,
+        contactInfo: data.contactInfo || {},
+        status: data.status || 'active',
+        createdBy: data.createdBy,
+        createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+        updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt,
+      };
+    }
+    return null;
+  },
+
+  // Update center
+  updateCenter: async (centerId: string, updates: Partial<Omit<SatsangCenter, 'id' | 'createdAt'>>): Promise<void> => {
+    const centerRef = doc(firestore, 'centers', centerId);
+    await updateDoc(centerRef, {
+      ...updates,
+      updatedAt: serverTimestamp(),
+    });
+  },
+
+  // Delete center (soft delete by setting status to inactive)
+  deleteCenter: async (centerId: string): Promise<void> => {
+    const centerRef = doc(firestore, 'centers', centerId);
+    await updateDoc(centerRef, {
+      status: 'inactive',
+      updatedAt: serverTimestamp(),
+    });
+  },
+
+  // Search centers by location
+  searchCenters: async (searchTerm: string): Promise<SatsangCenter[]> => {
+    const centers = await centersService.getCenters();
+    
+    if (!searchTerm.trim()) return centers;
+    
+    const searchLower = searchTerm.toLowerCase();
+    return centers.filter(center => 
+      center.name.toLowerCase().includes(searchLower) ||
+      center.city.toLowerCase().includes(searchLower) ||
+      center.state.toLowerCase().includes(searchLower) ||
+      center.country.toLowerCase().includes(searchLower) ||
+      center.contactPerson.toLowerCase().includes(searchLower)
+    );
+  },
+
+  // Get centers by country
+  getCentersByCountry: async (country: string): Promise<SatsangCenter[]> => {
+    const q = query(
+      collection(firestore, 'centers'),
+      where('country', '==', country),
+      where('status', '==', 'active'),
+      orderBy('state'),
+      orderBy('city')
+    );
+
+    const snapshot = await getDocs(q);
+    const centers: SatsangCenter[] = [];
+
+    snapshot.forEach((doc) => {
+      const data = doc.data();
+      centers.push({
+        id: doc.id,
+        name: data.name,
+        city: data.city,
+        state: data.state,
+        country: data.country,
+        contactPerson: data.contactPerson,
+        contactInfo: data.contactInfo || {},
+        status: data.status || 'active',
+        createdBy: data.createdBy,
+        createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+        updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt,
+      });
+    });
+
+    return centers;
   },
 }; 

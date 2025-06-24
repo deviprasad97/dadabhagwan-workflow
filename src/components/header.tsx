@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { BookOpenCheck, LogOut, Shield, Home, Grid3X3, FileText } from 'lucide-react';
+import { BookOpenCheck, LogOut, Shield, Home, Grid3X3, FileText, MapPin } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 
@@ -30,6 +30,7 @@ export function Header() {
   const isOnBoardsPage = pathname === '/boards';
   const isOnHomePage = pathname === '/';
   const isOnFormsPage = pathname.startsWith('/forms');
+  const isOnCentersPage = pathname.startsWith('/centers');
 
   const getInitials = (name: string) => {
     return name
@@ -75,6 +76,16 @@ export function Header() {
               <Link href="/forms" className="flex items-center gap-2">
                 <FileText className="h-4 w-4" />
                 Forms
+              </Link>
+            </Button>
+          )}
+          
+          {/* Centers Page Link */}
+          {!isOnCentersPage && (
+            <Button variant="outline" size="sm" asChild>
+              <Link href="/centers" className="flex items-center gap-2">
+                <MapPin className="h-4 w-4" />
+                Centers
               </Link>
             </Button>
           )}
@@ -142,6 +153,16 @@ export function Header() {
               </DropdownMenuItem>
             )}
             
+            {/* Centers Link */}
+            {!isOnCentersPage && (
+              <DropdownMenuItem asChild>
+                <Link href="/centers" className="flex items-center">
+                  <MapPin className="mr-2 h-4 w-4" />
+                  <span>Centers</span>
+                </Link>
+              </DropdownMenuItem>
+            )}
+            
             {/* Kanban Board Link */}
             {!isOnHomePage && (
               <DropdownMenuItem asChild>
@@ -162,7 +183,7 @@ export function Header() {
               </DropdownMenuItem>
             )}
             
-            {((!isOnBoardsPage) || (!isOnHomePage) || (isAdmin && !isOnAdminPage)) && (
+            {((!isOnBoardsPage) || (!isOnHomePage) || (!isOnFormsPage) || (!isOnCentersPage) || (isAdmin && !isOnAdminPage)) && (
               <DropdownMenuSeparator />
             )}
 

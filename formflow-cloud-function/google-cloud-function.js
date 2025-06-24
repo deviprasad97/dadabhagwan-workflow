@@ -47,7 +47,7 @@ functions.http('processFormSubmission', async (req, res) => {
     // Determine board ID (use integrated board if available, otherwise default)
     const targetBoardId = formData.boardId || 'default-board';
     
-    // Create card title using participant name (consistent for both Google Forms and FormFlow)
+    // Create card title using participant name (consistent for both Google Forms and DadaBhagwan)
     const cardTitle = `${formData.firstname} ${formData.lastname || ''}`.trim();
 
     // Create card data structure

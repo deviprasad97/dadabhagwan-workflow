@@ -183,7 +183,8 @@ export default function PrintPage() {
         {/* Footer info - Hidden during print */}
         <div className="print:hidden mt-8 text-center text-sm text-gray-500">
           <p>Use your browser's print function (Ctrl+P / Cmd+P) for best results</p>
-          <p>Gujarati font will render properly when printed from most modern browsers</p>
+          <p>If you increase the font size, please make sure to keep margins to minimum</p>
+          <p>Gujarati font will render properly when printed from most modern browsers. Google Chrome is recommended.</p>
         </div>
       </div>
 

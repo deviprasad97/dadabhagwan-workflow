@@ -1,7 +1,7 @@
 # Google Cloud Function Integration Setup
 
 ## Overview
-The FormFlow application can integrate with Google Cloud Functions to create Kanban cards directly in Firestore when forms are submitted. This provides a consistent workflow whether submissions come from the FormFlow app or external Google Forms.
+The DadaBhagwan application can integrate with Google Cloud Functions to create Kanban cards directly in Firestore when forms are submitted. This provides a consistent workflow whether submissions come from the DadaBhagwan app or external Google Forms.
 
 ## Setup Instructions
 
@@ -30,13 +30,13 @@ NEXT_PUBLIC_GOOGLE_CLOUD_FUNCTION_URL=https://your-region-your-project.cloudfunc
 
 ### 3. Firebase Configuration
 
-Ensure your Cloud Function has the same Firebase project configuration as your FormFlow app. The function will create cards in the same Firestore database.
+Ensure your Cloud Function has the same Firebase project configuration as your DadaBhagwan app. The function will create cards in the same Firestore database.
 
 ## How It Works
 
 ### Form Submission Flow
 
-1. **User submits form** via FormFlow public form page
+1. **User submits form** via DadaBhagwan public form page
 2. **Form data is validated** and saved to Firestore as a submission
 3. **Cloud Function is called** if board integration is enabled
 4. **Card is created** in the specified board's Firestore collection
@@ -44,7 +44,7 @@ Ensure your Cloud Function has the same Firebase project configuration as your F
 
 ### Data Transformation
 
-The FormFlow app transforms form responses to match the Cloud Function's expected format:
+The DadaBhagwan app transforms form responses to match the Cloud Function's expected format:
 
 ```javascript
 {

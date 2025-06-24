@@ -34,7 +34,7 @@ export default function Home() {
 //         <div className="flex items-center gap-4 mb-6">
 //           <AlertTriangle className="h-12 w-12 text-destructive" />
 //           <h1 className="text-5xl font-headline font-bold text-primary-foreground bg-primary px-4 py-2 rounded-lg">
-//             FormFlow Kanban
+//             DadaBhagwan Kanban
 //           </h1>
 //         </div>
 //         <Alert className="max-w-md mb-8">

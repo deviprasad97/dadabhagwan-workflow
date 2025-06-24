@@ -232,3 +232,21 @@ export type ColumnData = {
 };
 
 export type BoardAccess = 'owner' | 'shared' | 'admin';
+
+// Satsang Center Types
+export interface SatsangCenter {
+  id: string;
+  name: string;
+  city: string;
+  state: string;
+  country: string;
+  contactPerson: string;
+  contactInfo: {
+    mobile?: string;
+    email?: string;
+  };
+  createdAt: string;
+  updatedAt: string;
+  createdBy: string; // User ID who created this center
+  status: 'active' | 'inactive';
+}

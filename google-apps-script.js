@@ -1,5 +1,5 @@
 /**
- * Google Apps Script for FormFlow Kanban Integration
+ * Google Apps Script for DadaBhagwan Kanban Integration
  * 
  * This script automatically sends form submissions to your Next.js webhook
  * when a Google Form is submitted.
@@ -82,7 +82,7 @@ function onFormSubmit(e) {
     const success = sendToWebhook(payload);
     
     if (success) {
-      console.log('✅ Form submission successfully sent to FormFlow Kanban');
+      console.log('✅ Form submission successfully sent to DadaBhagwan Kanban');
       
       // Optional: Add a note to the form response or send confirmation email
       // You can implement additional logic here if needed
@@ -98,7 +98,7 @@ function onFormSubmit(e) {
     console.error('Error in onFormSubmit:', error);
     
     // Optional: Send error notification email to admin
-    // GmailApp.sendEmail('admin@yourdomain.com', 'FormFlow Integration Error', error.toString());
+    // GmailApp.sendEmail('admin@yourdomain.com', 'DadaBhagwan Integration Error', error.toString());
   }
 }
 
@@ -154,7 +154,7 @@ function testWebhook() {
   // Create a test payload that matches your form structure
   const testPayload = {
     formId: 'test-form-id',
-    formTitle: 'Test FormFlow Integration',
+    formTitle: 'Test DadaBhagwan Integration',
     responseId: 'test-response-id',
     timestamp: new Date().toISOString(),
     respondentEmail: 'test@example.com',

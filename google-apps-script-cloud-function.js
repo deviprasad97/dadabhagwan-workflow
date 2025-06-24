@@ -188,7 +188,7 @@ function logError(source, error, data) {
 function sendErrorNotification(error, formData) {
   try {
     // Uncomment and configure to send error notifications
-    // const subject = 'FormFlow: Google Forms Integration Error';
+    // const subject = 'DadaBhagwan: Google Forms Integration Error';
     // const body = `
     //   Error occurred while processing form submission:
     //   
