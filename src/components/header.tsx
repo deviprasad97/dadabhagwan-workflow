@@ -11,8 +11,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
-import { BookOpenCheck, LogOut, Users } from 'lucide-react';
-import Link from 'next/link';
+import { BookOpenCheck, LogOut } from 'lucide-react';
 
 export function Header() {
   const { user, logout } = useAuth();
@@ -51,17 +50,6 @@ export function Header() {
             </div>
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
-          {user.role === 'Admin' && (
-            <>
-              <DropdownMenuItem asChild>
-                <Link href="/admin" className="flex items-center">
-                  <Users className="mr-2 h-4 w-4" />
-                  <span>User Management</span>
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-            </>
-          )}
           <DropdownMenuItem onClick={logout}>
             <LogOut className="mr-2 h-4 w-4" />
             <span>Log out</span>

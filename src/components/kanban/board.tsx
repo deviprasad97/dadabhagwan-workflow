@@ -163,22 +163,71 @@ export function KanbanBoard() {
   };
 
   const handleDragEnd = async (event: DragEndEvent) => {
+    console.log('=== DRAG END ===');
+    console.log('Full event:', event);
+    
     const { active, over } = event;
     
-    if (!active || !over || active.id === over.id || !user) {
+    console.log('Active:', active);
+    console.log('Over:', over);
+    
+    if (!active || !over || !user) {
+      console.log('Drag end cancelled - missing:', { 
+        active: !!active, 
+        over: !!over, 
+        user: !!user 
+      });
       setActiveCard(null);
       return;
     }
 
     const cardId = active.id as string;
-    const targetColumnId = over.id as ColumnId;
+    const overId = over.id as string;
     
+    console.log('Dragging card:', cardId, 'Over:', overId);
+    
+    // Find the current card
     const currentCard = Object.values(columns)
       .flatMap(col => col.cards)
       .find(c => c.id === cardId);
 
     if (!currentCard) {
-      console.error('Card not found:', cardId);
+      console.warn('Card not found:', cardId);
+      setActiveCard(null);
+      return;
+    }
+
+    console.log('Current card:', currentCard);
+    console.log('Available columns:', columnOrder);
+
+    // Determine target column
+    let targetColumnId: ColumnId;
+    
+    // Check if dropping directly on a column
+    if (columnOrder.includes(overId as ColumnId)) {
+      targetColumnId = overId as ColumnId;
+      console.log('Dropping directly on column:', targetColumnId);
+    } else {
+      // If dropping on a card, find which column that card belongs to
+      const targetCard = Object.values(columns)
+        .flatMap(col => col.cards)
+        .find(c => c.id === overId);
+      
+      if (targetCard) {
+        targetColumnId = targetCard.column;
+        console.log('Dropping on card, target column:', targetColumnId);
+      } else {
+        console.warn('Could not determine target column for:', overId);
+        setActiveCard(null);
+        return;
+      }
+    }
+
+    console.log('Target column determined:', targetColumnId);
+
+    // Check if the card is actually moving to a different column
+    if (currentCard.column === targetColumnId) {
+      console.log('Card already in target column, no move needed');
       setActiveCard(null);
       return;
     }
@@ -195,13 +244,12 @@ export function KanbanBoard() {
       return;
     }
 
-    // Check if user has permission to move the card
-    if (user.role === 'Editor' && currentCard.assigneeUid !== user.uid && currentCard.assigneeUid !== null) {
-      console.log('Permission denied - Editor can only move assigned or unassigned cards');
+    if (user.role === 'Editor' && currentCard.assigneeUid !== user.uid) {
+      console.log('Permission denied - Editor can only move assigned cards');
       toast({ 
         variant: 'destructive', 
         title: 'Permission Denied', 
-        description: 'You can only move cards assigned to you or unassigned cards.' 
+        description: 'You can only move cards assigned to you.' 
       });
       setActiveCard(null);
       return;
@@ -230,19 +278,7 @@ export function KanbanBoard() {
   };
 
   const handleUpdateCard = async (updatedCard: Card) => {
-    if (!user) return;
-
     try {
-      // Check if user has permission to update the card
-      if (user.role === 'Editor' && updatedCard.assigneeUid !== user.uid && updatedCard.assigneeUid !== null) {
-        toast({
-          variant: 'destructive',
-          title: 'Permission Denied',
-          description: 'You can only update cards assigned to you or unassigned cards.'
-        });
-        return;
-      }
-
       await cardService.updateCard(updatedCard.id, updatedCard);
       setCardForTranslation(null);
       setCardForDetails(null);

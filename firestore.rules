@@ -2,67 +2,10 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Helper function to check if user is admin
-    function isAdmin() {
-      return request.auth != null && 
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'Admin';
-    }
-
-    // Helper function to check if user is editor
-    function isEditor() {
-      return request.auth != null && 
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'Editor';
-    }
-
-    // Helper function to check if user can modify card
-    function canModifyCard(cardData) {
-      let userRole = get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
-      return userRole == 'Admin' || 
-        (userRole == 'Editor' && (
-          cardData.assigneeUid == request.auth.uid || 
-          cardData.assigneeUid == null || 
-          !('assigneeUid' in cardData)
-        ));
-    }
-
-    // Users collection rules
-    match /users/{userId} {
-      // Anyone can read user documents
-      allow read: if request.auth != null;
-      
-      // Only admins can create new users
-      allow create: if isAdmin();
-      
-      // Users can update their own document, but admins can update any user
-      allow update: if request.auth.uid == userId || isAdmin();
-      
-      // Only admins can delete users
-      allow delete: if isAdmin();
-    }
-    
-    // Cards collection rules
-    match /cards/{cardId} {
-      allow read: if request.auth != null;
-      allow create: if request.auth != null;
-      
-      // Allow updates if:
-      // 1. User is admin, or
-      // 2. User is editor and:
-      //    - Card is assigned to them
-      //    - Card is unassigned
-      //    - Card doesn't have an assignee field yet
-      allow update: if request.auth != null && (
-        isAdmin() ||
-        (isEditor() && canModifyCard(resource.data))
-      );
-      
-      allow delete: if isAdmin();
-    }
-    
-    // Audit logs rules
-    match /audit_logs/{logId} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null;
+    // Allow all authenticated users to read and write all documents
+    // This is a very permissive rule for development
+    match /{document=**} {
+      allow read, write: if request.auth != null;
     }
   }
 } 

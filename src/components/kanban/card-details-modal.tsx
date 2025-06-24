@@ -39,7 +39,6 @@ import { useAuth } from '@/hooks/use-auth';
 import { cn } from '@/lib/utils';
 import { suggestGujaratiTranslation } from '@/ai/flows/suggest-gujarati-translation';
 import { OpenAI } from 'openai';
-import { userService } from '@/lib/firestore';
 
 type TranslationProvider = 'genkit' | 'openai' | 'sutra';
 
@@ -138,7 +137,6 @@ export function CardDetailsModal({
   const { user: currentUser } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
   const [translationStatuses, setTranslationStatuses] = useState<TranslationStatus[]>([]);
-  const [availableUsers, setAvailableUsers] = useState<User[]>([]);
   const [adminFields, setAdminFields] = useState<AdminFields>({
     priority: undefined,
     topic: '',
@@ -152,22 +150,6 @@ export function CardDetailsModal({
   const canEditTranslation = showApprovedTranslation && card?.column !== 'print';
 
   const isPrintColumn = card?.column === 'print';
-
-  // Fetch available users (Admins and Editors only)
-  useEffect(() => {
-    const fetchUsers = async () => {
-      try {
-        const users = await userService.getAllUsers();
-        // Filter for Admins and Editors only
-        const eligibleUsers = users.filter(u => u.role === 'Admin' || u.role === 'Editor');
-        setAvailableUsers(eligibleUsers);
-      } catch (error) {
-        console.error('Error fetching users:', error);
-      }
-    };
-
-    fetchUsers();
-  }, []);
 
   // Initialize admin fields when card changes
   useEffect(() => {
@@ -756,52 +738,20 @@ export function CardDetailsModal({
               <div className="grid grid-cols-1 gap-4 pl-7">
                 <div className="space-y-2">
                   <Label className="text-sm font-medium text-muted-foreground">Assigned To</Label>
-                  {isEditing && (currentUser?.role === 'Admin' || currentUser?.role === 'Editor') ? (
-                    <Select
-                      value={card.assigneeUid || ''}
-                      onValueChange={(value) => {
-                        const updatedCard: Card = {
-                          ...card,
-                          assigneeUid: value || null
-                        };
-                        onSave(updatedCard);
-                      }}
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Select user to assign" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="">Unassigned</SelectItem>
-                        {availableUsers.map((u) => (
-                          <SelectItem key={u.uid} value={u.uid}>
-                            <div className="flex items-center gap-2">
-                              <Avatar className="h-6 w-6">
-                                <AvatarImage src={u.avatarUrl} alt={u.name} />
-                                <AvatarFallback>{getInitials(u.name)}</AvatarFallback>
-                              </Avatar>
-                              <span>{u.name}</span>
-                              <Badge variant="outline" className="ml-auto">{u.role}</Badge>
-                            </div>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      {assignee ? (
-                        <>
-                          <Avatar className="h-6 w-6">
-                            <AvatarImage src={assignee.avatarUrl} alt={assignee.name} />
-                            <AvatarFallback className="text-xs">{getInitials(assignee.name)}</AvatarFallback>
-                          </Avatar>
-                          <span className="text-sm">{assignee.name}</span>
-                          <Badge variant="outline" className="text-xs">{assignee.role}</Badge>
-                        </>
-                      ) : (
-                        <span className="text-muted-foreground text-sm">Unassigned</span>
-                      )}
-                    </div>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {assignee ? (
+                      <>
+                        <Avatar className="h-6 w-6">
+                          <AvatarImage src={assignee.avatarUrl} alt={assignee.name} />
+                          <AvatarFallback className="text-xs">{getInitials(assignee.name)}</AvatarFallback>
+                        </Avatar>
+                        <span className="text-sm">{assignee.name}</span>
+                        <Badge variant="outline" className="text-xs">{assignee.role}</Badge>
+                      </>
+                    ) : (
+                      <span className="text-muted-foreground text-sm">Unassigned</span>
+                    )}
+                  </div>
                 </div>
 
                 <div className="space-y-2">

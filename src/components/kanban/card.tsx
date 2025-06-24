@@ -11,7 +11,6 @@ import { useAuth } from '@/hooks/use-auth';
 import { cn } from '@/lib/utils';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Badge } from '@/components/ui/badge';
 
 interface KanbanCardProps {
   card: Card;
@@ -99,75 +98,90 @@ export function KanbanCard({
   };
 
   return (
-    <div
+    <UICard
       ref={setNodeRef}
       style={style}
-      className={cn(
-        'group relative flex flex-col gap-2 rounded-lg border bg-card p-3 text-card-foreground shadow-sm transition-all duration-200',
-        isDragging && 'rotate-3 scale-105 cursor-grabbing shadow-lg',
-        !isDraggable && 'opacity-60 cursor-default',
-        isDraggable && 'hover:shadow-md cursor-grab active:cursor-grabbing'
-      )}
       {...attributes}
       {...listeners}
-      onMouseUp={handleMouseUp}
       onMouseDown={handleMouseDown}
+      onMouseUp={handleMouseUp}
+      className={cn(
+        "bg-card shadow-md hover:shadow-lg transition-shadow duration-200 border-l-4",
+        isDraggable ? 'cursor-grab active:cursor-grabbing' : 'cursor-not-allowed',
+        isDragging && 'opacity-50',
+        sortableIsDragging && 'opacity-30',
+        card.column === 'translate_gujarati' ? 'border-blue-400' : 
+        card.column === 'checking_gujarati' ? 'border-purple-400' :
+        card.column === 'print' ? 'border-orange-400' :
+        card.column === 'done' ? 'border-green-400' :
+        'border-gray-300'
+      )}
     >
-      {/* Card Header */}
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex-1 space-y-1">
-          <div className="flex items-center gap-2">
-            <h3 className="text-sm font-medium leading-none">
-              {card.title}
-            </h3>
-          </div>
+      <CardHeader className="p-4">
+        <CardTitle className="text-base font-bold font-body">{card.title}</CardTitle>
+      </CardHeader>
+      <CardContent className="p-4 pt-0">
+        <p className="text-sm text-muted-foreground line-clamp-3">{card.content}</p>
+      </CardContent>
+      <CardFooter className="flex justify-between items-center p-4 pt-0">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Clock className="h-3 w-3" />
+            <span>{formatDistanceToNow(new Date(card.createdAt), { addSuffix: true })}</span>
         </div>
-      </div>
-
-      {/* Card Content */}
-      <div className="text-sm text-muted-foreground line-clamp-2">
-        {card.metadata?.formData?.english_question || 'No question provided'}
-      </div>
-
-      {/* Card Footer */}
-      <div className="flex items-center justify-between mt-2">
-        {/* Priority and Topic */}
         <div className="flex items-center gap-2">
-          {card.metadata?.priority && (
-            <Badge className={cn(
-              'text-xs',
-              card.metadata.priority === 'Urgent' && 'bg-red-500 text-white',
-              card.metadata.priority === 'High' && 'bg-orange-500 text-white',
-              card.metadata.priority === 'Medium' && 'bg-yellow-500 text-white',
-              card.metadata.priority === 'Low' && 'bg-green-500 text-white'
-            )}>
-              {card.metadata.priority}
-            </Badge>
-          )}
-          {card.metadata?.topic && (
-            <Badge variant="outline" className="text-xs">
-              {card.metadata.topic}
-            </Badge>
-          )}
-        </div>
-
-        {/* Assignee */}
-        <div className="flex items-center gap-2">
-          {assignee ? (
-            <div className="flex items-center gap-1" title={`Assigned to ${assignee.name}`}>
-              <Avatar className="h-6 w-6">
-                <AvatarImage src={assignee.avatarUrl} alt={assignee.name} />
-                <AvatarFallback>{getInitials(assignee.name)}</AvatarFallback>
-              </Avatar>
-              <Badge variant="secondary" className="text-xs">
-                {assignee.role}
-              </Badge>
+            <div className="flex items-center gap-2">
+              {card.column === 'translate_gujarati' && (currentUser?.role === 'Admin' || currentUser?.role === 'Editor') && (
+                   <Button variant="outline" size="sm" onClick={handleTranslationClick} className="h-8">
+                      <Languages className="h-4 w-4 mr-2" /> Translate
+                   </Button>
+              )}
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onCardClick?.(card);
+                }} 
+                className="h-8 px-2"
+                title="View Details"
+              >
+                <Eye className="h-4 w-4" />
+              </Button>
             </div>
-          ) : (
-            <Badge variant="outline" className="text-xs">Unassigned</Badge>
-          )}
+            <div className="flex items-center gap-1">
+              {assignee && (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger>
+                      <Avatar className="h-8 w-8">
+                        <AvatarImage src={assignee.avatarUrl} alt={assignee.name} />
+                        <AvatarFallback>{getInitials(assignee.name)}</AvatarFallback>
+                      </Avatar>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Assigned to {assignee.name}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
+              {user && (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger>
+                      <Avatar className="h-6 w-6">
+                        <AvatarImage src={user.avatarUrl} alt={user.name} />
+                        <AvatarFallback>{getInitials(user.name)}</AvatarFallback>
+                      </Avatar>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Created by {user.name}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
+            </div>
         </div>
-      </div>
-    </div>
+      </CardFooter>
+    </UICard>
   );
 }
