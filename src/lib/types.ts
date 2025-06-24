@@ -27,6 +27,7 @@ export type Board = {
     tags?: string[];
     [key: string]: any;
   };
+  columnDefinitions?: ColumnDefinition[];
 };
 
 // Form Builder Types
@@ -201,7 +202,7 @@ export interface FormAccessSettings {
   customUrl?: string; // Custom slug for public URL
 }
 
-export type ColumnId = 'online_submitted' | 'translate_gujarati' | 'checking_gujarati' | 'print' | 'done';
+export type ColumnId = string;
 
 // Custom field types for dynamic card fields
 export type CustomFieldType = 
@@ -222,8 +223,8 @@ export interface CustomFieldDefinition {
   type: CustomFieldType;
   description?: string;
   required?: boolean;
-  options?: string[]; // For select/multiselect fields
-  defaultValue?: any;
+  options?: string[]; // For select/multiselect
+  defaultValue?: string;
   validation?: {
     min?: number;
     max?: number;
@@ -231,6 +232,18 @@ export interface CustomFieldDefinition {
     message?: string;
   };
   order: number;
+  createdAt: string;
+  createdBy: string;
+}
+
+export interface ColumnDefinition {
+  id: string;
+  title: string;
+  description?: string;
+  color?: string; // Hex color for column header
+  order: number;
+  isDefault?: boolean; // Cannot be deleted if true
+  maxCards?: number; // WIP limit
   createdAt: string;
   createdBy: string;
 }
@@ -256,14 +269,22 @@ export interface Card {
     gujaratiTranslation?: string;
     approvedTranslation?: string;
     formSubmissionId?: string; // Link to the form submission
+    // Live view specific fields
+    originalLanguage?: string; // Language the question was asked in
+    translatedQuestion?: string; // Translated version of the question
+    isAnswered?: boolean; // Whether the question has been answered
+    isLive?: boolean; // Whether the question is currently live
+    personName?: string; // Name of the person who asked the question
     [key: string]: any;
-  };
+};
 }
 
 export type ColumnData = {
   id: ColumnId;
   title: string;
   cards: Card[];
+  color?: string;
+  maxCards?: number;
 };
 
 export type BoardAccess = 'owner' | 'shared' | 'admin';

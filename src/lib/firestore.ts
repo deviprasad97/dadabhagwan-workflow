@@ -1,4 +1,5 @@
 import {
+  getFirestore,
   collection,
   doc,
   getDocs,
@@ -20,7 +21,11 @@ import {
   arrayRemove,
   increment,
   deleteField,
-  runTransaction
+  runTransaction,
+  Timestamp,
+  enableNetwork,
+  disableNetwork,
+  limit
 } from 'firebase/firestore';
 import { firestore } from './firebase';
 import type { Card, User, ColumnId, Board, Form, FormSubmission, FormTemplate, BoardIntegration, SatsangCenter } from './types';
@@ -124,6 +129,70 @@ export const seedMockData = async (): Promise<void> => {
     // Ensure default board exists first
     const defaultBoard = await boardService.getBoard(DEFAULT_BOARD_ID);
     if (!defaultBoard) {
+      // Default column definitions
+      const defaultColumnDefinitions = [
+        {
+          id: 'live',
+          title: 'Live',
+          description: 'Questions that are currently live and being discussed',
+          color: '#ef4444',
+          order: 0,
+          isDefault: true,
+          createdAt: new Date().toISOString(),
+          createdBy: 'system',
+        },
+        {
+          id: 'online_submitted',
+          title: 'Online Submitted',
+          description: 'Questions submitted through online forms',
+          color: '#06b6d4',
+          order: 1,
+          isDefault: true,
+          createdAt: new Date().toISOString(),
+          createdBy: 'system',
+        },
+        {
+          id: 'translate_gujarati',
+          title: 'Translate Gujarati',
+          description: 'Questions being translated to Gujarati',
+          color: '#eab308',
+          order: 2,
+          isDefault: true,
+          createdAt: new Date().toISOString(),
+          createdBy: 'system',
+        },
+        {
+          id: 'checking_gujarati',
+          title: 'Checking Gujarati',
+          description: 'Gujarati translations being reviewed',
+          color: '#f97316',
+          order: 3,
+          isDefault: true,
+          createdAt: new Date().toISOString(),
+          createdBy: 'system',
+        },
+        {
+          id: 'print',
+          title: 'Print',
+          description: 'Questions ready for printing',
+          color: '#8b5cf6',
+          order: 4,
+          isDefault: true,
+          createdAt: new Date().toISOString(),
+          createdBy: 'system',
+        },
+        {
+          id: 'done',
+          title: 'Done',
+          description: 'Completed questions',
+          color: '#22c55e',
+          order: 5,
+          isDefault: true,
+          createdAt: new Date().toISOString(),
+          createdBy: 'system',
+        },
+      ];
+
       await setDoc(doc(firestore, BOARDS_COLLECTION, DEFAULT_BOARD_ID), {
         name: 'Main Board',
         description: 'Default board for all questions',
@@ -131,6 +200,7 @@ export const seedMockData = async (): Promise<void> => {
         isDefault: true,
         sharedWith: [],
         settings: {},
+        columnDefinitions: defaultColumnDefinitions,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
@@ -560,25 +630,32 @@ export const boardService = {
 
   // Get board by ID
   getBoard: async (boardId: string): Promise<Board | null> => {
-    const boardRef = doc(firestore, BOARDS_COLLECTION, boardId);
-    const boardSnap = await getDoc(boardRef);
-    
-    if (boardSnap.exists()) {
-      const data = boardSnap.data();
-      return {
-        id: boardSnap.id,
-        name: data.name,
-        description: data.description,
-        creatorUid: data.creatorUid,
-        isDefault: data.isDefault,
-        sharedWith: data.sharedWith || [],
-        customFieldDefinitions: data.customFieldDefinitions || [],
-        settings: data.settings || {},
-        createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
-        updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt || data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
-      };
+    try {
+      const boardRef = doc(firestore, BOARDS_COLLECTION, boardId);
+      const boardSnap = await getDoc(boardRef);
+      
+      if (boardSnap.exists()) {
+        const data = boardSnap.data();
+        return {
+          id: boardSnap.id,
+          name: data.name,
+          description: data.description,
+          creatorUid: data.creatorUid,
+          isDefault: data.isDefault,
+          sharedWith: data.sharedWith || [],
+          settings: data.settings || {},
+          customFieldDefinitions: data.customFieldDefinitions || [],
+          columnDefinitions: data.columnDefinitions || [],
+          createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+          updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt || data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+        };
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('Error getting board:', error);
+      return null;
     }
-    return null;
   },
 
   // Get boards accessible to a user
@@ -681,52 +758,53 @@ export const boardService = {
     });
   },
 
-  // Update a board
-  updateBoard: async (boardId: string, updates: Partial<Board>): Promise<void> => {
-    try {
-      console.log('Firestore updateBoard called with:', { boardId, updates });
-      const boardRef = doc(firestore, BOARDS_COLLECTION, boardId);
-      
-      // Helper function to recursively remove undefined values
-      const cleanFirestoreData = (obj: any): any => {
-        if (obj === null || obj === undefined) {
-          return null;
-        }
-        
-        if (Array.isArray(obj)) {
-          return obj.map(cleanFirestoreData).filter(item => item !== undefined);
-        }
-        
-        if (typeof obj === 'object') {
-          const cleaned: any = {};
-          for (const [key, value] of Object.entries(obj)) {
-            if (value !== undefined) {
-              const cleanedValue = cleanFirestoreData(value);
-              if (cleanedValue !== undefined) {
-                cleaned[key] = cleanedValue;
-              }
-            }
-          }
-          return cleaned;
-        }
-        
-        return obj;
-      };
-      
-      // Recursively remove all undefined values to prevent Firestore errors
-      const cleanUpdates = cleanFirestoreData(updates);
-      
-      const updateData = {
-        ...cleanUpdates,
-        updatedAt: serverTimestamp(),
-      };
-      console.log('Prepared update data:', updateData);
-      await updateDoc(boardRef, updateData);
-      console.log('Board update successful');
-    } catch (error) {
-      console.error('Firestore updateBoard error:', error);
-      throw error;
+  // Helper function to recursively remove undefined values
+  cleanFirestoreData: (obj: any): any => {
+    if (obj === null || obj === undefined) {
+      return null;
     }
+    
+    if (Array.isArray(obj)) {
+      return obj.map(boardService.cleanFirestoreData).filter(item => item !== undefined);
+    }
+    
+    if (typeof obj === 'object') {
+      const cleaned: any = {};
+      for (const [key, value] of Object.entries(obj)) {
+        if (value !== undefined) {
+          const cleanedValue = boardService.cleanFirestoreData(value);
+          if (cleanedValue !== undefined) {
+            cleaned[key] = cleanedValue;
+          }
+        }
+      }
+      return cleaned;
+    }
+    
+    return obj;
+  },
+
+  // Update board
+  updateBoard: async (boardId: string, updates: Partial<Board>): Promise<void> => {
+    const boardRef = doc(firestore, BOARDS_COLLECTION, boardId);
+    
+    // Log what we're trying to update
+    console.log('Updating board:', {
+      boardId,
+      updates,
+      hasColumnDefinitions: !!updates.columnDefinitions,
+      columnCount: updates.columnDefinitions?.length || 0
+    });
+    
+    const cleanedUpdates = boardService.cleanFirestoreData({
+      ...updates,
+      updatedAt: serverTimestamp(),
+    });
+    
+    console.log('Cleaned updates before Firestore save:', cleanedUpdates);
+    
+    await updateDoc(boardRef, cleanedUpdates);
+    console.log('Board updated successfully in Firestore');
   },
 
   // Share board with users
@@ -780,6 +858,70 @@ export const boardService = {
   ensureDefaultBoard: async (): Promise<void> => {
     const defaultBoard = await boardService.getBoard(DEFAULT_BOARD_ID);
     if (!defaultBoard) {
+      // Default column definitions
+      const defaultColumnDefinitions = [
+        {
+          id: 'live',
+          title: 'Live',
+          description: 'Questions that are currently live and being discussed',
+          color: '#ef4444',
+          order: 0,
+          isDefault: true,
+          createdAt: new Date().toISOString(),
+          createdBy: 'system',
+        },
+        {
+          id: 'online_submitted',
+          title: 'Online Submitted',
+          description: 'Questions submitted through online forms',
+          color: '#06b6d4',
+          order: 1,
+          isDefault: true,
+          createdAt: new Date().toISOString(),
+          createdBy: 'system',
+        },
+        {
+          id: 'translate_gujarati',
+          title: 'Translate Gujarati',
+          description: 'Questions being translated to Gujarati',
+          color: '#eab308',
+          order: 2,
+          isDefault: true,
+          createdAt: new Date().toISOString(),
+          createdBy: 'system',
+        },
+        {
+          id: 'checking_gujarati',
+          title: 'Checking Gujarati',
+          description: 'Gujarati translations being reviewed',
+          color: '#f97316',
+          order: 3,
+          isDefault: true,
+          createdAt: new Date().toISOString(),
+          createdBy: 'system',
+        },
+        {
+          id: 'print',
+          title: 'Print',
+          description: 'Questions ready for printing',
+          color: '#8b5cf6',
+          order: 4,
+          isDefault: true,
+          createdAt: new Date().toISOString(),
+          createdBy: 'system',
+        },
+        {
+          id: 'done',
+          title: 'Done',
+          description: 'Completed questions',
+          color: '#22c55e',
+          order: 5,
+          isDefault: true,
+          createdAt: new Date().toISOString(),
+          createdBy: 'system',
+        },
+      ];
+
       await setDoc(doc(firestore, BOARDS_COLLECTION, DEFAULT_BOARD_ID), {
         name: 'Main Board',
         description: 'Default board for all questions',
@@ -787,18 +929,217 @@ export const boardService = {
         isDefault: true,
         sharedWith: [],
         settings: {},
+        columnDefinitions: defaultColumnDefinitions,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
+    } else if (!defaultBoard.columnDefinitions || defaultBoard.columnDefinitions.length === 0) {
+      // Only add default columns if no column definitions exist at all
+      console.log('Migrating board to add default column definitions');
+      const defaultColumnDefinitions = [
+        {
+          id: 'live',
+          title: 'Live',
+          description: 'Questions that are currently live and being discussed',
+          color: '#ef4444',
+          order: 0,
+          isDefault: true,
+          createdAt: new Date().toISOString(),
+          createdBy: 'system',
+        },
+        {
+          id: 'online_submitted',
+          title: 'Online Submitted',
+          description: 'Questions submitted through online forms',
+          color: '#06b6d4',
+          order: 1,
+          isDefault: true,
+          createdAt: new Date().toISOString(),
+          createdBy: 'system',
+        },
+        {
+          id: 'translate_gujarati',
+          title: 'Translate Gujarati',
+          description: 'Questions being translated to Gujarati',
+          color: '#eab308',
+          order: 2,
+          isDefault: true,
+          createdAt: new Date().toISOString(),
+          createdBy: 'system',
+        },
+        {
+          id: 'checking_gujarati',
+          title: 'Checking Gujarati',
+          description: 'Gujarati translations being reviewed',
+          color: '#f97316',
+          order: 3,
+          isDefault: true,
+          createdAt: new Date().toISOString(),
+          createdBy: 'system',
+        },
+        {
+          id: 'print',
+          title: 'Print',
+          description: 'Questions ready for printing',
+          color: '#8b5cf6',
+          order: 4,
+          isDefault: true,
+          createdAt: new Date().toISOString(),
+          createdBy: 'system',
+        },
+        {
+          id: 'done',
+          title: 'Done',
+          description: 'Completed questions',
+          color: '#22c55e',
+          order: 5,
+          isDefault: true,
+          createdAt: new Date().toISOString(),
+          createdBy: 'system',
+        },
+      ];
+
+      await boardService.updateBoard(DEFAULT_BOARD_ID, {
+        columnDefinitions: defaultColumnDefinitions,
+      });
+    } else {
+      // Board already has column definitions, don't overwrite them
+      console.log('Board already has column definitions, skipping migration');
     }
+  },
+
+  // Subscribe to a specific board for real-time updates
+  subscribeToBoard: (boardId: string, callback: (board: Board | null) => void): Unsubscribe => {
+    const boardRef = doc(firestore, BOARDS_COLLECTION, boardId);
+    
+    return onSnapshot(boardRef, (doc) => {
+      if (doc.exists()) {
+        const data = doc.data();
+        const board: Board = {
+          id: doc.id,
+          name: data.name,
+          description: data.description,
+          creatorUid: data.creatorUid,
+          isDefault: data.isDefault,
+          sharedWith: data.sharedWith || [],
+          settings: data.settings || {},
+          customFieldDefinitions: data.customFieldDefinitions || [],
+          columnDefinitions: data.columnDefinitions || [],
+          createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+          updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt || data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+        };
+        console.log('Board subscription update:', {
+          boardId: board.id,
+          hasColumnDefinitions: !!data.columnDefinitions,
+          columnCount: data.columnDefinitions?.length || 0,
+          columnIds: data.columnDefinitions?.map((c: any) => c.id) || [],
+          rawData: data
+        });
+        callback(board);
+      } else {
+        console.log('Board document does not exist');
+        callback(null);
+      }
+    }, (error) => {
+      console.error('Error in board subscription:', error);
+      callback(null);
+    });
   },
 };
 
 // Create mock cards with realistic data
 const mockCards: Card[] = [
   {
-    id: 'card-1',
+    id: 'card-live-1',
     cardNumber: 1,
+    title: 'Julia Keim',
+    content: `📧 **Contact Information**
+Email: julia.keim@example.com
+
+👤 **Personal Details**
+Age: 29 • Gender: Female • City: Berlin
+
+🙏 **Spiritual Information**
+Status: Single
+Gnan Vidhi Year: 2021
+
+❓ **Question**
+During the evolvement of living beings, they develop one sense after the other. From one sense to five senses, as in humans. Could you please explain, which senses evolve after that, and in which order, and could you also give examples?`,
+    column: 'live',
+    createdAt: new Date(Date.now() - 1 * 60 * 60 * 1000).toISOString(),
+    updatedAt: new Date(Date.now() - 1 * 60 * 60 * 1000).toISOString(),
+    creatorUid: 'google-forms',
+    assigneeUid: 'user-2',
+    boardId: DEFAULT_BOARD_ID,
+    metadata: {
+      source: 'google-forms',
+      priority: 'High',
+      topic: 'Evolution of Senses',
+      originalLanguage: 'English',
+      personName: 'Julia Keim',
+      isLive: true,
+      isAnswered: false,
+      translatedQuestion: 'Während der Entwicklung von Lebewesen entwickeln diese immer mehr Sinne. Von einem Sinn zu fünf Sinnen wie beim Menschen. Könntest Du bitte erläutern, welche Sinne sich danach in welcher Reihenfolge entwickeln, und auch Beispiele geben?',
+      formData: {
+        email: 'julia.keim@example.com',
+        firstname: 'Julia',
+        lastname: 'Keim',
+        age: '29',
+        gender: 'Female',
+        city: 'Berlin',
+        status: 'Single',
+        gnan_vidhi_year: '2021',
+        english_question: 'During the evolvement of living beings, they develop one sense after the other. From one sense to five senses, as in humans. Could you please explain, which senses evolve after that, and in which order, and could you also give examples?'
+      }
+    }
+  },
+  {
+    id: 'card-live-2',
+    cardNumber: 2,
+    title: 'Barbara Konder',
+    content: `📧 **Contact Information**
+Email: barbara.konder@example.com
+
+👤 **Personal Details**
+Age: 55 • Gender: Female • City: Hamburg
+
+🙏 **Spiritual Information**
+Status: Married
+Gnan Vidhi Year: 2015
+
+❓ **Question**
+Since Barbara has been with Akram Vignan, she has come home and is immensely grateful for it. When Barbara looks at her life since Gnan, she feels she can observe the following: a few files have lost their stickiness with a lot of Pratikraman. But at the same time, challenging files are showing up. Could it be, that with Gnan "there is more to cope with", or does it just seem so?`,
+    column: 'live',
+    createdAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+    updatedAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+    creatorUid: 'google-forms',
+    assigneeUid: 'user-1',
+    boardId: DEFAULT_BOARD_ID,
+    metadata: {
+      source: 'google-forms',
+      priority: 'Medium',
+      topic: 'Spiritual Progress',
+      originalLanguage: 'German',
+      personName: 'Barbara Konder',
+      isLive: true,
+      isAnswered: false,
+      translatedQuestion: 'Seitdem Barbara bei Akram Vignan ist, ist sie zu Hause angekommen und unendlich dankbar dafür. Wenn Barbara auf ihr Leben seit Gnan schaut, dann glaubt sie Folgendes zu beobachten: Ein paar Akten haben mit viel Pratikraman die Klebrigkeit verloren. Gleichzeitig zeigen sich aber herausfordernde Akten.',
+      formData: {
+        email: 'barbara.konder@example.com',
+        firstname: 'Barbara',
+        lastname: 'Konder',
+        age: '55',
+        gender: 'Female',
+        city: 'Hamburg',
+        status: 'Married',
+        gnan_vidhi_year: '2015',
+        english_question: 'Since Barbara has been with Akram Vignan, she has come home and is immensely grateful for it. When Barbara looks at her life since Gnan, she feels she can observe the following: a few files have lost their stickiness with a lot of Pratikraman. But at the same time, challenging files are showing up.'
+      }
+    }
+  },
+  {
+    id: 'card-1',
+    cardNumber: 3,
     title: 'Rajesh Patel',
     content: `📧 **Contact Information**
 Email: rajesh.patel@example.com
@@ -839,7 +1180,7 @@ What is the difference between ego and pride? How can I identify when I am actin
   },
   {
     id: 'card-2',
-    cardNumber: 2,
+    cardNumber: 4,
     title: 'Priya Shah',
     content: `📧 **Contact Information**
 Email: priya.shah@example.com
@@ -877,7 +1218,7 @@ How can I maintain equanimity during difficult family situations? I find myself 
   },
   {
     id: 'card-3',
-    cardNumber: 3,
+    cardNumber: 5,
     title: 'Amit Desai',
     content: `📧 **Contact Information**
 Email: amit.desai@example.com
@@ -921,7 +1262,7 @@ This question has been bothering me for a while. I would appreciate a detailed e
   },
   {
     id: 'card-4',
-    cardNumber: 4,
+    cardNumber: 6,
     title: 'Neha Joshi',
     content: `📧 **Contact Information**
 Email: neha.joshi@example.com
@@ -959,7 +1300,7 @@ How can I practice true forgiveness? I understand it intellectually but find it 
   },
   {
     id: 'card-5',
-    cardNumber: 5,
+    cardNumber: 7,
     title: 'Kiran Mehta',
     content: `📧 **Contact Information**
 Email: kiran.mehta@example.com

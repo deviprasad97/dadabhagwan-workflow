@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   DndContext,
   DragEndEvent,
@@ -21,7 +22,9 @@ import { KanbanColumn } from './column';
 import { KanbanCard } from './card';
 import { BoardSelector } from './board-selector';
 import { CustomFieldsManager } from './custom-fields-manager';
-import type { Card, ColumnId, ColumnData, User, Board } from '@/lib/types';
+import { ColumnManager } from './column-manager';
+import { LiveView } from './live-view';
+import type { Card, ColumnId, ColumnData, User, Board, ColumnDefinition } from '@/lib/types';
 import { TranslationModal } from './translation-modal';
 import { CardDetailsModal } from './card-details-modal';
 import { useAuth } from '@/hooks/use-auth';
@@ -44,7 +47,9 @@ import {
   SortDesc,
   Calendar,
   Tag,
-  Star
+  Star,
+  LayoutGrid,
+  List
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -60,23 +65,69 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 
-// Column order for display
-const columnOrder: ColumnId[] = [
-  'online_submitted',
-  'translate_gujarati',
-  'checking_gujarati',
-  'print',
-  'done',
+// Default columns for fallback
+const defaultColumnDefinitions: ColumnDefinition[] = [
+  {
+    id: 'live',
+    title: 'Live',
+    description: 'Questions that are currently live and being discussed',
+    color: '#ef4444',
+    order: 0,
+    isDefault: true,
+    createdAt: new Date().toISOString(),
+    createdBy: 'system',
+  },
+  {
+    id: 'online_submitted',
+    title: 'Online Submitted',
+    description: 'Questions submitted through online forms',
+    color: '#06b6d4',
+    order: 1,
+    isDefault: true,
+    createdAt: new Date().toISOString(),
+    createdBy: 'system',
+  },
+  {
+    id: 'translate_gujarati',
+    title: 'Translate Gujarati',
+    description: 'Questions being translated to Gujarati',
+    color: '#eab308',
+    order: 2,
+    isDefault: true,
+    createdAt: new Date().toISOString(),
+    createdBy: 'system',
+  },
+  {
+    id: 'checking_gujarati',
+    title: 'Checking Gujarati',
+    description: 'Gujarati translations being reviewed',
+    color: '#f97316',
+    order: 3,
+    isDefault: true,
+    createdAt: new Date().toISOString(),
+    createdBy: 'system',
+  },
+  {
+    id: 'print',
+    title: 'Print',
+    description: 'Questions ready for printing',
+    color: '#8b5cf6',
+    order: 4,
+    isDefault: true,
+    createdAt: new Date().toISOString(),
+    createdBy: 'system',
+  },
+  {
+    id: 'done',
+    title: 'Done',
+    description: 'Completed questions',
+    color: '#22c55e',
+    order: 5,
+    isDefault: true,
+    createdAt: new Date().toISOString(),
+    createdBy: 'system',
+  },
 ];
-
-// Column titles mapping for toast messages
-const columnTitles: Record<ColumnId, string> = {
-  online_submitted: 'Online Submitted',
-  translate_gujarati: 'Translate Gujarati',
-  checking_gujarati: 'Checking Gujarati',
-  print: 'Print',
-  done: 'Done',
-};
 
 // Filter types
 type FilterType = 'assignee' | 'priority' | 'column' | 'dateRange' | 'topic';
@@ -99,7 +150,7 @@ interface KanbanBoardProps {
 export function KanbanBoard({ selectedBoardId }: KanbanBoardProps) {
   // All useState hooks first
   const [currentBoard, setCurrentBoard] = useState<Board | null>(null);
-  const [columns, setColumns] = useState<Record<ColumnId, ColumnData>>({} as any);
+  const [columns, setColumns] = useState<Record<string, ColumnData>>({} as any);
   const [allCards, setAllCards] = useState<Card[]>([]);
   const [users, setUsers] = useState<Record<string, User>>({});
   const [activeCard, setActiveCard] = useState<Card | null>(null);
@@ -109,10 +160,12 @@ export function KanbanBoard({ selectedBoardId }: KanbanBoardProps) {
   const [isFilterExpanded, setIsFilterExpanded] = useState(false);
   const [sortBy, setSortBy] = useState<SortOption>('created');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+  const [viewMode, setViewMode] = useState<'kanban' | 'live'>('kanban'); // Default to Live view
   
   // Then custom hooks
   const { user } = useAuth();
   const { toast } = useToast();
+  const router = useRouter();
 
   // DnD sensors - moved outside useMemo to avoid hook violations
   const sensors = useSensors(
@@ -222,6 +275,24 @@ export function KanbanBoard({ selectedBoardId }: KanbanBoardProps) {
     return Array.from(topics);
   }, [allCards]);
 
+  // Get active column definitions - useMemo
+  const activeColumnDefinitions = useMemo(() => {
+    if (!currentBoard?.columnDefinitions || currentBoard.columnDefinitions.length === 0) {
+      return defaultColumnDefinitions;
+    }
+    return [...currentBoard.columnDefinitions].sort((a, b) => a.order - b.order);
+  }, [currentBoard?.columnDefinitions]);
+
+  // Column order and titles based on definitions - useMemo
+  const { columnOrder, columnTitles } = useMemo(() => {
+    const order = activeColumnDefinitions.map(def => def.id as ColumnId);
+    const titles = activeColumnDefinitions.reduce((acc, def) => {
+      acc[def.id as ColumnId] = def.title;
+      return acc;
+    }, {} as Record<ColumnId, string>);
+    return { columnOrder: order, columnTitles: titles };
+  }, [activeColumnDefinitions]);
+
   // useCallback hooks
   const handleCardClick = useCallback((card: Card) => {
     setCardForDetails(card);
@@ -250,12 +321,13 @@ export function KanbanBoard({ selectedBoardId }: KanbanBoardProps) {
   }, []);
 
   const handleBoardChange = useCallback((board: Board) => {
-    setCurrentBoard(board);
-    setColumns({} as any);
-    setAllCards([]);
+    // Clear filters when changing boards
     setActiveFilters([]);
     setIsFilterExpanded(false);
-  }, []);
+    
+    // Use Next.js router for smooth navigation
+    router.push(`/?board=${board.id}`);
+  }, [router]);
 
   const handleDragStart = useCallback((event: DragStartEvent) => {
     const cardId = event.active.id as string;
@@ -285,8 +357,8 @@ export function KanbanBoard({ selectedBoardId }: KanbanBoardProps) {
     // Determine target column
     let targetColumnId: ColumnId;
     
-    if (columnOrder.includes(overId as ColumnId)) {
-      targetColumnId = overId as ColumnId;
+    if (columnOrder.includes(overId as string)) {
+      targetColumnId = overId as string;
     } else {
       const targetCard = Object.values(columns)
         .flatMap(col => col.cards)
@@ -304,7 +376,7 @@ export function KanbanBoard({ selectedBoardId }: KanbanBoardProps) {
       setActiveCard(null);
       return;
     }
-
+    
     // Enforce role permissions
     if (!user) {
       toast({ 
@@ -335,7 +407,7 @@ export function KanbanBoard({ selectedBoardId }: KanbanBoardProps) {
       setActiveCard(null);
       return;
     }
-
+    
     try {
       await cardService.moveCard(cardId, targetColumnId, user.uid);
       
@@ -352,7 +424,7 @@ export function KanbanBoard({ selectedBoardId }: KanbanBoardProps) {
     }
 
     setActiveCard(null);
-  }, [findCard, columns, user, toast]);
+  }, [findCard, columns, user, toast, columnOrder, columnTitles]);
 
   const handleUpdateCard = useCallback(async (updatedCard: Card) => {
     try {
@@ -376,7 +448,6 @@ export function KanbanBoard({ selectedBoardId }: KanbanBoardProps) {
     try {
       console.log('Attempting to update board:', updatedBoard.id, updatedBoard);
       await boardService.updateBoard(updatedBoard.id, updatedBoard);
-      setCurrentBoard(updatedBoard);
       toast({
         title: "Board Updated",
         description: "Board settings have been updated successfully."
@@ -397,28 +468,41 @@ export function KanbanBoard({ selectedBoardId }: KanbanBoardProps) {
       const column = columns[columnId];
       if (!column) return null;
       
+      const columnDef = activeColumnDefinitions.find(def => def.id === columnId);
+      
       return (
         <KanbanColumn
           key={columnId}
-          column={column}
+          column={{
+            ...column,
+            title: columnDef?.title || column.title,
+            color: columnDef?.color,
+            maxCards: columnDef?.maxCards,
+          }}
           users={users}
           openTranslationModal={setCardForTranslation}
           onCardClick={handleCardClick}
         />
       );
     });
-  }, [columns, users, handleCardClick]);
+  }, [columns, users, handleCardClick, columnOrder, activeColumnDefinitions]);
 
   // Update columns when filtered cards change
   useEffect(() => {
-    const initialColumns: Record<ColumnId, ColumnData> = {
-      online_submitted: { id: 'online_submitted', title: 'Online Submitted', cards: [] },
-      translate_gujarati: { id: 'translate_gujarati', title: 'Translate Gujarati', cards: [] },
-      checking_gujarati: { id: 'checking_gujarati', title: 'Checking Gujarati', cards: [] },
-      print: { id: 'print', title: 'Print', cards: [] },
-      done: { id: 'done', title: 'Done', cards: [] },
-    };
+    // Create initial columns structure based on active column definitions
+    const initialColumns: Record<string, ColumnData> = {};
+    
+    activeColumnDefinitions.forEach((columnDef) => {
+      initialColumns[columnDef.id] = {
+        id: columnDef.id,
+        title: columnDef.title,
+        cards: [],
+        color: columnDef.color,
+        maxCards: columnDef.maxCards,
+      };
+    });
 
+    // Distribute cards into columns
     processedCards.forEach((card) => {
       if (initialColumns[card.column]) {
         initialColumns[card.column].cards.push(card);
@@ -426,7 +510,7 @@ export function KanbanBoard({ selectedBoardId }: KanbanBoardProps) {
     });
     
     setColumns(initialColumns);
-  }, [processedCards]);
+  }, [processedCards, activeColumnDefinitions]);
 
   // Initialize default board and seed data
   useEffect(() => {
@@ -442,7 +526,7 @@ export function KanbanBoard({ selectedBoardId }: KanbanBoardProps) {
             if (hasAccess) {
               setCurrentBoard(board);
             } else {
-              toast({
+    toast({
                 variant: 'destructive',
                 title: 'Access Denied',
                 description: 'You do not have access to this board.'
@@ -458,17 +542,30 @@ export function KanbanBoard({ selectedBoardId }: KanbanBoardProps) {
     initializeBoards();
   }, [selectedBoardId, user, toast]);
 
-  // Subscribe to cards and users
+  // Subscribe to board, cards and users
   useEffect(() => {
-    if (!user || !currentBoard) {
+    if (!user || !selectedBoardId) {
       return;
     }
 
+    let unsubscribeBoard: (() => void) | undefined;
     let unsubscribeCards: (() => void) | undefined;
     let unsubscribeUsers: (() => void) | undefined;
 
     try {
-      unsubscribeCards = cardService.subscribeToCards(currentBoard.id, (cards) => {
+      // Subscribe to board for real-time updates
+      unsubscribeBoard = boardService.subscribeToBoard(selectedBoardId, (board) => {
+        if (board) {
+          console.log('Board updated via subscription:', board);
+          setCurrentBoard(board);
+        } else {
+          console.log('Board not found or deleted');
+          setCurrentBoard(null);
+        }
+      });
+
+      // Subscribe to cards
+      unsubscribeCards = cardService.subscribeToCards(selectedBoardId, (cards) => {
         setAllCards(cards);
       });
 
@@ -487,6 +584,14 @@ export function KanbanBoard({ selectedBoardId }: KanbanBoardProps) {
     }
 
     return () => {
+      if (typeof unsubscribeBoard === 'function') {
+        try {
+          unsubscribeBoard();
+        } catch (error) {
+          console.error('Error unsubscribing from board:', error);
+        }
+      }
+      
       if (typeof unsubscribeCards === 'function') {
         try {
           unsubscribeCards();
@@ -503,7 +608,7 @@ export function KanbanBoard({ selectedBoardId }: KanbanBoardProps) {
         }
       }
     };
-  }, [user, currentBoard]);
+  }, [user, selectedBoardId]);
 
   return (
     <div className="flex flex-col h-full">
@@ -518,16 +623,45 @@ export function KanbanBoard({ selectedBoardId }: KanbanBoardProps) {
           {/* Toolbar - Right Side */}
           {currentBoard && (
             <div className="flex items-center gap-2">
+
+              {/* Results Counter */}
+              <Badge variant="outline" className="text-sm">
+                {filterStats.filtered} of {filterStats.total} cards
+              </Badge>
+
+              {/* View Switcher */}
+              <div className="flex items-center rounded-md border">
+                <Button
+                  variant={viewMode === 'live' ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => setViewMode('live')}
+                  className="rounded-r-none border-r"
+                >
+                  <List className="h-4 w-4 mr-1" />
+                  Live
+                </Button>
+                <Button
+                  variant={viewMode === 'kanban' ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => setViewMode('kanban')}
+                  className="rounded-l-none"
+                >
+                  <LayoutGrid className="h-4 w-4 mr-1" />
+                  Kanban
+                </Button>
+              </div>
+
               {/* Custom Fields Manager */}
               <CustomFieldsManager
                 board={currentBoard}
                 onUpdateBoard={handleUpdateBoard}
               />
 
-              {/* Results Counter */}
-              <Badge variant="outline" className="text-sm">
-                {filterStats.filtered} of {filterStats.total} cards
-              </Badge>
+              {/* Column Manager */}
+              <ColumnManager
+                board={currentBoard}
+                onUpdateBoard={handleUpdateBoard}
+              />
 
               {/* Filter Button */}
               <Button
@@ -750,7 +884,7 @@ export function KanbanBoard({ selectedBoardId }: KanbanBoardProps) {
                       <div className="space-y-1">
                         {columnOrder.map((columnId) => (
                           <Button
-                            key={columnId}
+              key={columnId}
                             variant="ghost"
                             size="sm"
                             className="w-full justify-start"
@@ -806,32 +940,41 @@ export function KanbanBoard({ selectedBoardId }: KanbanBoardProps) {
         )}
       </div>
 
-      {/* Kanban Board */}
+      {/* Main Content Area */}
       {currentBoard ? (
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragStart={handleDragStart}
-          onDragEnd={handleDragEnd}
-        >
-          <div className="flex gap-4 md:gap-6 h-full w-full">
-            {renderedColumns}
-          </div>
+        viewMode === 'live' ? (
+          // Live View
+          <LiveView 
+            cards={processedCards} 
+            onCardClick={handleCardClick}
+          />
+        ) : (
+          // Kanban View
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+              onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+          >
+            <div className="flex gap-4 md:gap-6 h-full w-full">
+              {renderedColumns}
+            </div>
 
-          <DragOverlay>
-            {activeCard ? (
-              <div className="rotate-3 opacity-90">
-                <KanbanCard
-                  card={activeCard}
-                  user={users[activeCard.creatorUid]}
-                  assignee={activeCard.assigneeUid ? users[activeCard.assigneeUid] : undefined}
-                  isDragging={true}
-                  openTranslationModal={setCardForTranslation}
-                />
-              </div>
-            ) : null}
-          </DragOverlay>
-        </DndContext>
+            <DragOverlay>
+              {activeCard ? (
+                <div className="rotate-3 opacity-90">
+                  <KanbanCard
+                    card={activeCard}
+                    user={users[activeCard.creatorUid]}
+                    assignee={activeCard.assigneeUid ? users[activeCard.assigneeUid] : undefined}
+                    isDragging={true}
+              openTranslationModal={setCardForTranslation}
+            />
+                </div>
+              ) : null}
+            </DragOverlay>
+          </DndContext>
+        )
       ) : (
         <div className="flex items-center justify-center h-full">
           <div className="text-center">
@@ -842,7 +985,7 @@ export function KanbanBoard({ selectedBoardId }: KanbanBoardProps) {
               Please select a board from the dropdown above to view cards.
             </div>
           </div>
-        </div>
+      </div>
       )}
 
       {/* Modals */}

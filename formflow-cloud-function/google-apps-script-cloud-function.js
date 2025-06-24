@@ -256,7 +256,7 @@ function setupFormTrigger() {
     console.log(`Found ${triggers.length} existing triggers, cleaning up...`);
     triggers.forEach(trigger => {
       console.log(`Deleting trigger: ${trigger.getHandlerFunction()}`);
-      ScriptApp.deleteTrigger(trigger);
+        ScriptApp.deleteTrigger(trigger);
     });
     
     // Wait a moment for cleanup
