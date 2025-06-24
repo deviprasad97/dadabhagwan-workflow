@@ -20,6 +20,7 @@ import {
 import { KanbanColumn } from './column';
 import { KanbanCard } from './card';
 import { BoardSelector } from './board-selector';
+import { CustomFieldsManager } from './custom-fields-manager';
 import type { Card, ColumnId, ColumnData, User, Board } from '@/lib/types';
 import { TranslationModal } from './translation-modal';
 import { CardDetailsModal } from './card-details-modal';
@@ -371,6 +372,25 @@ export function KanbanBoard({ selectedBoardId }: KanbanBoardProps) {
     }
   }, [toast]);
 
+  const handleUpdateBoard = useCallback(async (updatedBoard: Board) => {
+    try {
+      console.log('Attempting to update board:', updatedBoard.id, updatedBoard);
+      await boardService.updateBoard(updatedBoard.id, updatedBoard);
+      setCurrentBoard(updatedBoard);
+      toast({
+        title: "Board Updated",
+        description: "Board settings have been updated successfully."
+      });
+    } catch (error) {
+      console.error('Error updating board:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: `Failed to update board: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`
+      });
+    }
+  }, [toast]);
+
   // Memoize the columns rendering
   const renderedColumns = useMemo(() => {
     return columnOrder.map((columnId) => {
@@ -498,6 +518,12 @@ export function KanbanBoard({ selectedBoardId }: KanbanBoardProps) {
           {/* Toolbar - Right Side */}
           {currentBoard && (
             <div className="flex items-center gap-2">
+              {/* Custom Fields Manager */}
+              <CustomFieldsManager
+                board={currentBoard}
+                onUpdateBoard={handleUpdateBoard}
+              />
+
               {/* Results Counter */}
               <Badge variant="outline" className="text-sm">
                 {filterStats.filtered} of {filterStats.total} cards
@@ -833,6 +859,7 @@ export function KanbanBoard({ selectedBoardId }: KanbanBoardProps) {
           card={cardForDetails}
           user={users[cardForDetails.creatorUid]}
           assignee={cardForDetails.assigneeUid ? users[cardForDetails.assigneeUid] : undefined}
+          board={currentBoard || undefined}
           isOpen={!!cardForDetails}
           onClose={() => setCardForDetails(null)}
           onSave={handleUpdateCard}

@@ -15,6 +15,7 @@ export type Board = {
   creatorUid: string;
   isDefault?: boolean;
   sharedWith: string[]; // Array of user UIDs who have access
+  customFieldDefinitions?: CustomFieldDefinition[]; // Dynamic field definitions for this board
   settings?: {
     allowEditorSharing?: boolean;
     color?: string;
@@ -202,6 +203,38 @@ export interface FormAccessSettings {
 
 export type ColumnId = 'online_submitted' | 'translate_gujarati' | 'checking_gujarati' | 'print' | 'done';
 
+// Custom field types for dynamic card fields
+export type CustomFieldType = 
+  | 'text' 
+  | 'textarea' 
+  | 'number'
+  | 'date'
+  | 'select'
+  | 'multiselect'
+  | 'checkbox'
+  | 'url'
+  | 'email'
+  | 'phone';
+
+export interface CustomFieldDefinition {
+  id: string;
+  name: string;
+  type: CustomFieldType;
+  description?: string;
+  required?: boolean;
+  options?: string[]; // For select/multiselect fields
+  defaultValue?: any;
+  validation?: {
+    min?: number;
+    max?: number;
+    pattern?: string;
+    message?: string;
+  };
+  order: number;
+  createdAt: string;
+  createdBy: string;
+}
+
 export interface Card {
   id: string;
   cardNumber: number; // Sequential number unique to each board
@@ -213,6 +246,7 @@ export interface Card {
   creatorUid: string;
   assigneeUid?: string;
   boardId?: string; // Made optional for migration
+  customFields?: Record<string, any>; // Dynamic custom field values
   metadata?: {
     source?: string;
     formData?: Record<string, any>;

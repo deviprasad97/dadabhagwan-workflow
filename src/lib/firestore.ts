@@ -237,6 +237,7 @@ export const cardService = {
           assigneeUid: data.assigneeUid,
           column: data.column,
           boardId: data.boardId || DEFAULT_BOARD_ID, // Migration support
+          customFields: data.customFields || {}, // Custom field values
           createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
           updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt || data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
           metadata: data.metadata,
@@ -342,6 +343,7 @@ export const cardService = {
         assigneeUid: data.assigneeUid,
         column: data.column,
         boardId: data.boardId || DEFAULT_BOARD_ID, // Migration support
+        customFields: data.customFields || {}, // Custom field values
         createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
         updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt || data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
         metadata: data.metadata,
@@ -570,6 +572,7 @@ export const boardService = {
         creatorUid: data.creatorUid,
         isDefault: data.isDefault,
         sharedWith: data.sharedWith || [],
+        customFieldDefinitions: data.customFieldDefinitions || [],
         settings: data.settings || {},
         createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
         updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt || data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
@@ -606,6 +609,7 @@ export const boardService = {
         creatorUid: data.creatorUid,
         isDefault: data.isDefault,
         sharedWith: data.sharedWith || [],
+        customFieldDefinitions: data.customFieldDefinitions || [],
         settings: data.settings || {},
         createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
         updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt || data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
@@ -639,6 +643,7 @@ export const boardService = {
             creatorUid: data.creatorUid,
             isDefault: data.isDefault,
             sharedWith: data.sharedWith || [],
+            customFieldDefinitions: data.customFieldDefinitions || [],
             settings: data.settings || {},
             createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
             updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt || data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
@@ -678,12 +683,50 @@ export const boardService = {
 
   // Update a board
   updateBoard: async (boardId: string, updates: Partial<Board>): Promise<void> => {
-    const boardRef = doc(firestore, BOARDS_COLLECTION, boardId);
-    const updateData = {
-      ...updates,
-      updatedAt: serverTimestamp(),
-    };
-    await updateDoc(boardRef, updateData);
+    try {
+      console.log('Firestore updateBoard called with:', { boardId, updates });
+      const boardRef = doc(firestore, BOARDS_COLLECTION, boardId);
+      
+      // Helper function to recursively remove undefined values
+      const cleanFirestoreData = (obj: any): any => {
+        if (obj === null || obj === undefined) {
+          return null;
+        }
+        
+        if (Array.isArray(obj)) {
+          return obj.map(cleanFirestoreData).filter(item => item !== undefined);
+        }
+        
+        if (typeof obj === 'object') {
+          const cleaned: any = {};
+          for (const [key, value] of Object.entries(obj)) {
+            if (value !== undefined) {
+              const cleanedValue = cleanFirestoreData(value);
+              if (cleanedValue !== undefined) {
+                cleaned[key] = cleanedValue;
+              }
+            }
+          }
+          return cleaned;
+        }
+        
+        return obj;
+      };
+      
+      // Recursively remove all undefined values to prevent Firestore errors
+      const cleanUpdates = cleanFirestoreData(updates);
+      
+      const updateData = {
+        ...cleanUpdates,
+        updatedAt: serverTimestamp(),
+      };
+      console.log('Prepared update data:', updateData);
+      await updateDoc(boardRef, updateData);
+      console.log('Board update successful');
+    } catch (error) {
+      console.error('Firestore updateBoard error:', error);
+      throw error;
+    }
   },
 
   // Share board with users

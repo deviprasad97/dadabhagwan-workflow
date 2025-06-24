@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import type { Card, User } from '@/lib/types';
+import type { Card, User, Board } from '@/lib/types';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -44,6 +44,7 @@ import 'react-transliterate/dist/index.css';
 import { OpenAI } from 'openai';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import { firestore } from '@/lib/firebase';
+import { CustomFieldsEditor } from './custom-field-renderer';
 
 type TranslationProvider = 'genkit' | 'openai' | 'sutra';
 
@@ -118,6 +119,7 @@ interface CardDetailsModalProps {
   card: Card | null;
   user?: User;
   assignee?: User;
+  board?: Board;
   isOpen: boolean;
   onClose: () => void;
   onSave: (updatedCard: Card) => void;
@@ -126,7 +128,8 @@ interface CardDetailsModalProps {
 export function CardDetailsModal({ 
   card, 
   user, 
-  assignee, 
+  assignee,
+  board, 
   isOpen, 
   onClose, 
   onSave 
@@ -136,6 +139,7 @@ export function CardDetailsModal({
   const [translationStatuses, setTranslationStatuses] = useState<TranslationStatus[]>([]);
   const [availableUsers, setAvailableUsers] = useState<User[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
+  const [customFieldValues, setCustomFieldValues] = useState<Record<string, any>>({});
   const [adminFields, setAdminFields] = useState<AdminFields>({
     priority: undefined,
     topic: '',
@@ -183,7 +187,7 @@ export function CardDetailsModal({
     }
   }, [isOpen, canAssign]);
 
-  // Initialize admin fields when card changes
+  // Initialize admin fields and custom fields when card changes
   useEffect(() => {
     if (card) {
       setAdminFields({
@@ -193,6 +197,9 @@ export function CardDetailsModal({
         approvedTranslation: String(card.metadata?.approvedTranslation || ''),
         assigneeUid: card.assigneeUid || undefined
       });
+      
+      // Initialize custom field values
+      setCustomFieldValues(card.customFields || {});
     }
   }, [card]);
 
@@ -220,10 +227,11 @@ export function CardDetailsModal({
       delete metadata.priority;
     }
 
-    // Create base card object without assigneeUid first
+    // Create base card object with custom fields
     const updatedCard: Card = {
       ...card,
       metadata,
+      customFields: customFieldValues,
       updatedAt: new Date().toISOString()
     };
 
@@ -326,6 +334,10 @@ export function CardDetailsModal({
       approvedTranslation: String(card?.metadata?.approvedTranslation || ''),
       assigneeUid: card?.assigneeUid || undefined
     });
+    
+    // Reset custom fields to original values
+    setCustomFieldValues(card?.customFields || {});
+    
     setIsEditing(false);
   };
 
@@ -872,6 +884,22 @@ export function CardDetailsModal({
             </div>
 
             <Separator />
+
+            {/* Custom Fields Section */}
+            {board?.customFieldDefinitions && board.customFieldDefinitions.length > 0 && (
+              <>
+                <div className="space-y-4">
+                  <CustomFieldsEditor
+                    fieldDefinitions={board.customFieldDefinitions}
+                    values={customFieldValues}
+                    onChange={setCustomFieldValues}
+                    disabled={!isEditing || !canEdit}
+                  />
+                </div>
+
+                <Separator />
+              </>
+            )}
 
             {/* Assignment and Metadata */}
             <div className="space-y-4">
