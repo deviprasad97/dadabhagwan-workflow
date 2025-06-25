@@ -320,6 +320,7 @@ export const cardService = {
           column: data.column,
           boardId: data.boardId || DEFAULT_BOARD_ID, // Migration support
           customFields: data.customFields || {}, // Custom field values
+          editingStatus: data.editingStatus, // Include edit lock status
           createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
           updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt || data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
           metadata: data.metadata,
@@ -426,6 +427,7 @@ export const cardService = {
         column: data.column,
         boardId: data.boardId || DEFAULT_BOARD_ID, // Migration support
         customFields: data.customFields || {}, // Custom field values
+        editingStatus: data.editingStatus, // Include edit lock status
         createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
         updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt || data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
         metadata: data.metadata,
@@ -2318,5 +2320,201 @@ export const centersService = {
     });
 
     return centers;
+  },
+}; 
+
+// Edit Lock Service for preventing concurrent card edits
+export const editLockService = {
+  // Acquire edit lock for a card
+  acquireEditLock: async (cardId: string, userId: string, boardId: string): Promise<boolean> => {
+    const cardRef = doc(firestore, 'cards', cardId);
+    
+    try {
+      const result = await runTransaction(firestore, async (transaction) => {
+        const cardDoc = await transaction.get(cardRef);
+        
+        if (!cardDoc.exists()) {
+          throw new Error('Card not found');
+        }
+        
+        const cardData = cardDoc.data();
+        const editingStatus = cardData.editingStatus;
+        
+        // Check if card is already locked by another user
+        if (editingStatus?.isLocked && editingStatus.lockedBy !== userId) {
+          // Check if lock has expired (locks auto-expire after 10 minutes)
+          const lockExpiry = new Date(editingStatus.lockExpiry || 0);
+          const now = new Date();
+          
+          if (lockExpiry > now) {
+            // Lock is still active for another user
+            return false;
+          }
+        }
+        
+        // Acquire or refresh the lock
+        const lockExpiry = new Date();
+        lockExpiry.setMinutes(lockExpiry.getMinutes() + 10); // 10-minute lock
+        
+        transaction.update(cardRef, {
+          editingStatus: {
+            isLocked: true,
+            lockedBy: userId,
+            lockedAt: new Date().toISOString(),
+            lockExpiry: lockExpiry.toISOString(),
+          },
+          updatedAt: serverTimestamp(),
+        });
+        
+        return true;
+      });
+      
+      return result;
+    } catch (error) {
+      console.error('Failed to acquire edit lock:', error);
+      return false;
+    }
+  },
+
+  // Release edit lock for a card
+  releaseEditLock: async (cardId: string, userId: string, boardId: string): Promise<void> => {
+    const cardRef = doc(firestore, 'cards', cardId);
+    
+    try {
+      await runTransaction(firestore, async (transaction) => {
+        const cardDoc = await transaction.get(cardRef);
+        
+        if (!cardDoc.exists()) {
+          return;
+        }
+        
+        const cardData = cardDoc.data();
+        const editingStatus = cardData.editingStatus;
+        
+        // Only release if locked by the current user
+        if (editingStatus?.isLocked && editingStatus.lockedBy === userId) {
+          transaction.update(cardRef, {
+            editingStatus: {
+              isLocked: false,
+              lockedBy: null,
+              lockedAt: null,
+              lockExpiry: null,
+            },
+            updatedAt: serverTimestamp(),
+          });
+        }
+      });
+    } catch (error) {
+      console.error('Failed to release edit lock:', error);
+    }
+  },
+
+  // Refresh edit lock (extend expiry time)
+  refreshEditLock: async (cardId: string, userId: string, boardId: string): Promise<boolean> => {
+    const cardRef = doc(firestore, 'cards', cardId);
+    
+    try {
+      const result = await runTransaction(firestore, async (transaction) => {
+        const cardDoc = await transaction.get(cardRef);
+        
+        if (!cardDoc.exists()) {
+          return false;
+        }
+        
+        const cardData = cardDoc.data();
+        const editingStatus = cardData.editingStatus;
+        
+        // Only refresh if locked by the current user
+        if (editingStatus?.isLocked && editingStatus.lockedBy === userId) {
+          const lockExpiry = new Date();
+          lockExpiry.setMinutes(lockExpiry.getMinutes() + 10); // Extend by 10 minutes
+          
+          transaction.update(cardRef, {
+            'editingStatus.lockExpiry': lockExpiry.toISOString(),
+            'editingStatus.lockedAt': new Date().toISOString(),
+            updatedAt: serverTimestamp(),
+          });
+          
+          return true;
+        }
+        
+        return false;
+      });
+      
+      return result;
+    } catch (error) {
+      console.error('Failed to refresh edit lock:', error);
+      return false;
+    }
+  },
+
+  // Check if card is locked by another user
+  isCardLocked: (card: Card, currentUserId: string): { isLocked: boolean; lockedBy?: string; lockedByName?: string } => {
+    const editingStatus = card.editingStatus;
+    
+    if (!editingStatus?.isLocked) {
+      return { isLocked: false };
+    }
+    
+    // Check if lock has expired
+    const lockExpiry = new Date(editingStatus.lockExpiry || 0);
+    const now = new Date();
+    
+    if (lockExpiry <= now) {
+      return { isLocked: false };
+    }
+    
+    // Check if locked by current user
+    if (editingStatus.lockedBy === currentUserId) {
+      return { isLocked: false };
+    }
+    
+    return {
+      isLocked: true,
+      lockedBy: editingStatus.lockedBy,
+    };
+  },
+
+  // Clean up expired locks (utility function to be called periodically)
+  cleanupExpiredLocks: async (boardId: string): Promise<void> => {
+    const cardsRef = collection(firestore, 'cards');
+    const q = query(cardsRef, where('editingStatus.isLocked', '==', true), where('boardId', '==', boardId));
+    
+    try {
+      const snapshot = await getDocs(q);
+      const now = new Date();
+      const batch = writeBatch(firestore);
+      let hasUpdates = false;
+      
+      snapshot.forEach((doc) => {
+        const data = doc.data();
+        const editingStatus = data.editingStatus;
+        
+        if (editingStatus?.lockExpiry) {
+          const lockExpiry = new Date(editingStatus.lockExpiry);
+          
+          if (lockExpiry <= now) {
+            // Lock has expired, release it
+            batch.update(doc.ref, {
+              editingStatus: {
+                isLocked: false,
+                lockedBy: null,
+                lockedAt: null,
+                lockExpiry: null,
+              },
+              updatedAt: serverTimestamp(),
+            });
+            hasUpdates = true;
+          }
+        }
+      });
+      
+      if (hasUpdates) {
+        await batch.commit();
+        console.log('Cleaned up expired edit locks for board:', boardId);
+      }
+    } catch (error) {
+      console.error('Failed to cleanup expired locks:', error);
+    }
   },
 }; 

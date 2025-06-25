@@ -268,6 +268,13 @@ export interface Card {
   assigneeUid?: string;
   boardId?: string; // Made optional for migration
   customFields?: Record<string, any>; // Dynamic custom field values
+  // Edit locking fields
+  editingStatus?: {
+    isLocked: boolean;
+    lockedBy?: string; // User UID who is currently editing
+    lockedAt?: string; // When the lock was acquired
+    lockExpiry?: string; // When the lock expires (auto-release)
+  };
   metadata?: {
     source?: string;
     formData?: Record<string, any>;

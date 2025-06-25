@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import dynamic from 'next/dynamic';
 import { 
   User as UserIcon, 
@@ -33,10 +34,14 @@ import {
   Copy,
   Printer,
   UserPlus,
-  UserMinus
+  UserMinus,
+  Lock,
+  Loader2,
+  AlertTriangle
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useAuth } from '@/hooks/use-auth';
+import { useEditLock } from '@/hooks/use-edit-lock';
 import { cn } from '@/lib/utils';
 import { suggestGujaratiTranslation } from '@/ai/flows/suggest-gujarati-translation';
 import { ReactTransliterate } from 'react-transliterate';
@@ -148,9 +153,13 @@ export function CardDetailsModal({
     assigneeUid: undefined
   });
 
+  // Use edit lock hook
+  const editLock = useEditLock(card || {} as Card, board?.id || '');
+
   const isAdmin = currentUser?.role === 'Admin';
   const isEditor = currentUser?.role === 'Editor';
-  const canEdit = isAdmin || (isEditor && card?.assigneeUid === currentUser.uid);
+  const baseCanEdit = isAdmin || (isEditor && card?.assigneeUid === currentUser.uid);
+  const canEdit = baseCanEdit && editLock.canEdit();
   const canAssign = isAdmin || isEditor; // Both Admin and Editor can assign
   const showApprovedTranslation = card?.column === 'translate_gujarati' || card?.column === 'checking_gujarati';
   const canEditTranslation = showApprovedTranslation && card?.column !== 'print';
@@ -207,7 +216,7 @@ export function CardDetailsModal({
 
   const formData = card.metadata?.formData || {};
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!card) return;
 
     // Create a clean metadata object, removing undefined values
@@ -245,6 +254,9 @@ export function CardDetailsModal({
 
     onSave(updatedCard);
     setIsEditing(false);
+    
+    // Release the edit lock
+    await editLock.releaseLock();
   };
 
   const handleTranslate = async () => {
@@ -325,7 +337,7 @@ export function CardDetailsModal({
     }));
   };
 
-  const handleCancel = () => {
+  const handleCancel = async () => {
     // Reset to original values
     setAdminFields({
       priority: (card?.metadata?.priority as AdminFields['priority']) || undefined,
@@ -339,6 +351,22 @@ export function CardDetailsModal({
     setCustomFieldValues(card?.customFields || {});
     
     setIsEditing(false);
+    
+    // Release the edit lock
+    await editLock.releaseLock();
+  };
+
+  const handleStartEditing = async () => {
+    if (!baseCanEdit) return;
+    
+    // Try to acquire edit lock
+    const lockAcquired = await editLock.acquireLock();
+    
+    if (lockAcquired) {
+      setIsEditing(true);
+    }
+    // If lock acquisition fails, the hook will update the lock state
+    // and the UI will show the appropriate message
   };
 
   const getInitials = (name: string) => {
@@ -423,7 +451,7 @@ export function CardDetailsModal({
                 </Button>
               </div>
             )}
-            {canEdit && (
+            {baseCanEdit && (
               <div className="flex items-center gap-2 ml-4">
                 {isEditing ? (
                   <>
@@ -437,9 +465,19 @@ export function CardDetailsModal({
                     </Button>
                   </>
                 ) : (
-                  <Button size="sm" variant="outline" onClick={() => setIsEditing(true)} className="h-8">
-                    <Edit3 className="h-4 w-4 mr-1" />
-                    Edit
+                  <Button 
+                    size="sm" 
+                    variant="outline" 
+                    onClick={handleStartEditing} 
+                    disabled={editLock.isAcquiring || !editLock.canEdit()}
+                    className="h-8"
+                  >
+                    {editLock.isAcquiring ? (
+                      <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                    ) : (
+                      <Edit3 className="h-4 w-4 mr-1" />
+                    )}
+                    {editLock.isAcquiring ? 'Acquiring...' : 'Edit'}
                   </Button>
                 )}
               </div>
@@ -449,6 +487,25 @@ export function CardDetailsModal({
 
         <ScrollArea className="flex-1 h-[calc(100vh-120px)]">
           <div className="p-6 space-y-6">
+            {/* Edit Lock Status */}
+            {editLock.isLocked && editLock.lockedByUser && (
+              <Alert className="border-orange-200 bg-orange-50">
+                <Lock className="h-4 w-4 text-orange-600" />
+                <AlertDescription className="text-orange-800">
+                  <div className="flex items-center gap-2">
+                    <Avatar className="h-6 w-6">
+                      <AvatarImage src={editLock.lockedByUser.avatarUrl} alt={editLock.lockedByUser.name} />
+                      <AvatarFallback className="text-xs">
+                        {editLock.lockedByUser.name.split(' ').map(n => n[0]).join('')}
+                      </AvatarFallback>
+                    </Avatar>
+                    <span>
+                      <strong>{editLock.lockedByUser.name}</strong> is currently editing this card
+                    </span>
+                  </div>
+                </AlertDescription>
+              </Alert>
+            )}
             {/* Contact Information */}
             <div className="space-y-4">
               <h3 className="text-lg font-semibold font-headline flex items-center gap-2">

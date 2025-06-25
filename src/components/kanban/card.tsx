@@ -14,9 +14,10 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Badge } from '@/components/ui/badge';
-import { Languages, Clock, Eye, UserPlus, UserMinus, MoreVertical } from 'lucide-react';
+import { Languages, Clock, Eye, UserPlus, UserMinus, MoreVertical, Lock } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useAuth } from '@/hooks/use-auth';
+import { editLockService } from '@/lib/firestore';
 import { cn } from '@/lib/utils';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -48,6 +49,7 @@ export const KanbanCard = React.memo(function KanbanCard({
   const { user: currentUser } = useAuth();
   const [availableUsers, setAvailableUsers] = useState<User[]>([]);
   const [loadingAssignment, setLoadingAssignment] = useState(false);
+  const [lockedByUser, setLockedByUser] = useState<User | null>(null);
   
   const isDraggable = useMemo(() => 
     currentUser?.role === 'Admin' || 
@@ -60,6 +62,51 @@ export const KanbanCard = React.memo(function KanbanCard({
     [currentUser?.role]
   );
 
+  // Check if card is locked by another user
+  const lockInfo = useMemo(() => {
+    if (!currentUser) return { isLocked: false };
+    const result = editLockService.isCardLocked(card, currentUser.uid);
+    
+    // Debug logging
+    if (result.isLocked) {
+      console.log(`Card ${card.id} is locked by ${result.lockedBy}`, card.editingStatus);
+    }
+    
+    return result;
+  }, [card.editingStatus, currentUser]);
+
+  // Fetch user info for who has the lock
+  useEffect(() => {
+    const fetchLockedByUser = async () => {
+      if (lockInfo.isLocked && lockInfo.lockedBy) {
+        // First try to find the user in availableUsers to avoid extra query
+        const foundUser = availableUsers.find(u => u.uid === lockInfo.lockedBy);
+        if (foundUser) {
+          setLockedByUser(foundUser);
+          return;
+        }
+        
+        // If not found in available users, query Firestore
+        try {
+          const usersSnapshot = await getDocs(
+            query(collection(firestore, 'users'), where('uid', '==', lockInfo.lockedBy))
+          );
+          if (!usersSnapshot.empty) {
+            const userData = usersSnapshot.docs[0].data() as User;
+            setLockedByUser({ ...userData, uid: lockInfo.lockedBy });
+          }
+        } catch (error) {
+          console.error('Error fetching locked by user:', error);
+          setLockedByUser(null);
+        }
+      } else {
+        setLockedByUser(null);
+      }
+    };
+
+    fetchLockedByUser();
+  }, [lockInfo.isLocked, lockInfo.lockedBy, availableUsers]);
+
   const {
     attributes,
     listeners,
@@ -69,7 +116,7 @@ export const KanbanCard = React.memo(function KanbanCard({
     isDragging: sortableIsDragging,
   } = useSortable({
     id: card.id,
-    disabled: !isDraggable,
+    disabled: !isDraggable || lockInfo.isLocked, // Disable dragging if locked
   });
 
   const style = {
@@ -179,14 +226,17 @@ export const KanbanCard = React.memo(function KanbanCard({
       onMouseUp={handleMouseUp}
       className={cn(
         "bg-card shadow-md hover:shadow-lg transition-shadow duration-200 border-l-4 group",
-        isDraggable ? 'cursor-grab active:cursor-grabbing' : 'cursor-not-allowed',
+        isDraggable && !lockInfo.isLocked ? 'cursor-grab active:cursor-grabbing' : 'cursor-not-allowed',
         isDragging && 'opacity-50',
         sortableIsDragging && 'opacity-30',
-        card.column === 'translate_gujarati' ? 'border-blue-400' : 
-        card.column === 'checking_gujarati' ? 'border-purple-400' :
-        card.column === 'print' ? 'border-orange-400' :
-        card.column === 'done' ? 'border-green-400' :
-        'border-gray-300'
+        lockInfo.isLocked && 'bg-muted/50 border-red-300',
+        !lockInfo.isLocked && (
+          card.column === 'translate_gujarati' ? 'border-blue-400' : 
+          card.column === 'checking_gujarati' ? 'border-purple-400' :
+          card.column === 'print' ? 'border-orange-400' :
+          card.column === 'done' ? 'border-green-400' :
+          'border-gray-300'
+        )
       )}
     >
       <CardHeader className="p-4">
@@ -196,6 +246,25 @@ export const KanbanCard = React.memo(function KanbanCard({
               <Badge variant="outline" className="text-xs font-mono">
                 #{card.cardNumber}
               </Badge>
+              {lockInfo.isLocked && (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger>
+                      <Badge variant="destructive" className="text-xs flex items-center gap-1">
+                        <Lock className="h-3 w-3" />
+                        {lockedByUser ? `Editing: ${lockedByUser.name}` : 'Locked'}
+                      </Badge>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>
+                        {lockedByUser 
+                          ? `Currently being edited by ${lockedByUser.name}` 
+                          : 'Currently being edited by another user'}
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
             </div>
             <CardTitle className="text-base font-bold font-body">
               {card.metadata?.formData?.firstname && card.metadata?.formData?.lastname 
