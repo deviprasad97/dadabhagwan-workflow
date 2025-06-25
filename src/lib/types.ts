@@ -275,6 +275,8 @@ export interface Card {
     lockedAt?: string; // When the lock was acquired
     lockExpiry?: string; // When the lock expires (auto-release)
   };
+  // Print management fields
+  printStatus?: PrintStatus;
   metadata?: {
     source?: string;
     formData?: Record<string, any>;
@@ -336,6 +338,14 @@ export interface SatsangCenter {
 export type SupportedLanguage = 'en' | 'gu' | 'de' | 'hi' | 'fr' | 'es' | 'it' | 'pt' | 'ru' | 'ja' | 'ko' | 'zh' | 'ar';
 
 export type TranslationProvider = 'genkit' | 'openai' | 'sutra' | 'google-translate';
+
+// Print Management Types
+export interface PrintStatus {
+  status: 'pending' | 'approved' | 'rejected';
+  reviewedBy?: string; // Admin UID who approved/rejected
+  reviewedAt?: string; // ISO timestamp
+  comment?: string; // Optional approval/rejection comment
+}
 
 export interface TranslationStep {
   id: string;

@@ -27,8 +27,11 @@ import {
   Eye,
   Settings,
   MapPin,
-  Plus
+  Plus,
+  SquareKanban,
+  FileText
 } from 'lucide-react';
+import Link from 'next/link';
 import { collection, getDocs, doc, updateDoc, query, orderBy } from 'firebase/firestore';
 import { firestore } from '@/lib/firebase';
 import { centersService } from '@/lib/firestore';
@@ -411,6 +414,72 @@ export default function AdminPage() {
               </CardContent>
             </Card>
           </div>
+
+          {/* Quick Actions */}
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Settings className="h-5 w-5" />
+                Quick Actions
+              </CardTitle>
+              <CardDescription>
+                Access common admin functions and management tools
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <Button 
+                  asChild 
+                  variant="outline" 
+                  className="h-auto p-4 justify-start"
+                >
+                  <Link href="/admin/print-management" className="flex items-center gap-3">
+                    <div className="p-2 bg-purple-100 rounded-lg">
+                      <svg className="h-6 w-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                      </svg>
+                    </div>
+                    <div className="text-left">
+                      <div className="font-medium">Print Management</div>
+                      <div className="text-sm text-muted-foreground">Review & approve cards for printing</div>
+                    </div>
+                  </Link>
+                </Button>
+
+                <Button 
+                  asChild 
+                  variant="outline" 
+                  className="h-auto p-4 justify-start"
+                >
+                  <Link href="/boards" className="flex items-center gap-3">
+                    <div className="p-2 bg-blue-100 rounded-lg">
+                      <SquareKanban className="h-6 w-6 text-blue-600" />
+                    </div>
+                    <div className="text-left">
+                      <div className="font-medium">Manage Boards</div>
+                      <div className="text-sm text-muted-foreground">View and manage all Kanban boards</div>
+                    </div>
+                  </Link>
+                </Button>
+
+                <Button 
+                  asChild 
+                  variant="outline" 
+                  className="h-auto p-4 justify-start"
+                >
+                  <Link href="/forms" className="flex items-center gap-3">
+                    <div className="p-2 bg-green-100 rounded-lg">
+                      <FileText className="h-6 w-6 text-green-600" />
+                    </div>
+                    <div className="text-left">
+                      <div className="font-medium">Forms</div>
+                      <div className="text-sm text-muted-foreground">Configure and manage forms</div>
+                    </div>
+                  </Link>
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
 
           {/* Filters */}
           <Card className="mb-6">

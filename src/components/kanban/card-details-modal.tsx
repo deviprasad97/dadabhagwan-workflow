@@ -178,10 +178,22 @@ export function CardDetailsModal({
           where('role', 'in', ['Admin', 'Editor'])
         );
         const usersSnapshot = await getDocs(usersQuery);
-        const usersData = usersSnapshot.docs.map(doc => ({
+        let usersData = usersSnapshot.docs.map(doc => ({
           uid: doc.id,
           ...doc.data()
         })) as User[];
+        
+        // Add "For Review" option for print column cards
+        if (isPrintColumn) {
+          const forReviewUser = {
+            uid: 'for-review',
+            name: 'For Review',
+            email: 'review@system.com',
+            avatarUrl: 'https://placehold.co/40x40/fbbf24/000000?text=FR',
+            role: 'Admin' as const,
+          };
+          usersData = [forReviewUser, ...usersData];
+        }
         
         setAvailableUsers(usersData);
       } catch (error) {
@@ -194,7 +206,7 @@ export function CardDetailsModal({
     if (isOpen) {
       fetchEligibleUsers();
     }
-  }, [isOpen, canAssign]);
+  }, [isOpen, canAssign, isPrintColumn]);
 
   // Initialize admin fields and custom fields when card changes
   useEffect(() => {

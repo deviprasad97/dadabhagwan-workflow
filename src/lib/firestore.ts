@@ -321,6 +321,7 @@ export const cardService = {
           boardId: data.boardId || DEFAULT_BOARD_ID, // Migration support
           customFields: data.customFields || {}, // Custom field values
           editingStatus: data.editingStatus, // Include edit lock status
+          printStatus: data.printStatus, // Include print status
           createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
           updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt || data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
           metadata: data.metadata,
@@ -394,6 +395,140 @@ export const cardService = {
     await deleteDoc(cardRef);
   },
 
+  // Print Status Management
+  updateCardPrintStatus: async (cardId: string, printStatus: { status: 'pending' | 'approved' | 'rejected'; reviewedBy?: string; reviewedAt?: string; comment?: string; }): Promise<void> => {
+    const cardRef = doc(firestore, CARDS_COLLECTION, cardId);
+    
+    // Build printStatus object without undefined values
+    const printStatusUpdate: any = {
+      status: printStatus.status,
+      reviewedBy: printStatus.reviewedBy,
+      reviewedAt: printStatus.reviewedAt || new Date().toISOString(),
+    };
+    
+    // Only include comment if it has a value
+    if (printStatus.comment && printStatus.comment.trim()) {
+      printStatusUpdate.comment = printStatus.comment;
+    }
+    
+    await updateDoc(cardRef, {
+      printStatus: printStatusUpdate,
+      updatedAt: serverTimestamp(),
+    });
+  },
+
+  // Get pending print cards for admin review
+  getPendingPrintCards: async (boardId: string): Promise<Card[]> => {
+    if (!boardId) {
+      console.warn('getPendingPrintCards called with undefined boardId');
+      return [];
+    }
+
+    // Get all cards in print column assigned to "for-review" user
+    const q = query(
+      collection(firestore, CARDS_COLLECTION),
+      where('boardId', '==', boardId),
+      where('column', '==', 'print'),
+      where('assigneeUid', '==', 'for-review'), // Only cards assigned to "For Review"
+      orderBy('createdAt', 'desc')
+    );
+    
+    const snapshot = await getDocs(q);
+    const cards: Card[] = [];
+    snapshot.forEach((doc) => {
+      const data = doc.data();
+      
+      // Only include cards that are actually pending (null/undefined status or explicitly pending)
+      const printStatus = data.printStatus;
+      const isPending = !printStatus || 
+                       printStatus.status === 'pending' || 
+                       printStatus.status === undefined || 
+                       printStatus.status === null;
+      
+      if (isPending) {
+        cards.push({
+          id: doc.id,
+          cardNumber: data.cardNumber || 0,
+          title: data.title,
+          content: data.content,
+          creatorUid: data.creatorUid,
+          assigneeUid: data.assigneeUid,
+          column: data.column,
+          boardId: data.boardId || DEFAULT_BOARD_ID,
+          customFields: data.customFields || {},
+          editingStatus: data.editingStatus,
+          printStatus: data.printStatus,
+          createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+          updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt || data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+          metadata: data.metadata,
+        });
+      }
+    });
+    
+    return cards.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  },
+
+  // Get all cards in print column (for print view)
+  getAllPrintCards: async (boardId: string): Promise<Card[]> => {
+    const q = query(
+      collection(firestore, CARDS_COLLECTION),
+      where('boardId', '==', boardId),
+      where('column', '==', 'print'),
+      orderBy('createdAt', 'desc')
+    );
+    
+    const snapshot = await getDocs(q);
+    const cards: Card[] = [];
+    snapshot.forEach((doc) => {
+      const data = doc.data();
+      cards.push({
+        id: doc.id,
+        cardNumber: data.cardNumber || 0,
+        title: data.title,
+        content: data.content,
+        creatorUid: data.creatorUid,
+        assigneeUid: data.assigneeUid,
+        column: data.column,
+        boardId: data.boardId || DEFAULT_BOARD_ID,
+        customFields: data.customFields || {},
+        editingStatus: data.editingStatus,
+        printStatus: data.printStatus,
+        createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+        updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt || data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+        metadata: data.metadata,
+      });
+    });
+    return cards;
+  },
+
+  // Bulk update print status
+  bulkUpdatePrintStatus: async (cardIds: string[], printStatus: { status: 'approved' | 'rejected'; reviewedBy: string; comment?: string; }): Promise<void> => {
+    const batch = writeBatch(firestore);
+    
+    cardIds.forEach(cardId => {
+      const cardRef = doc(firestore, CARDS_COLLECTION, cardId);
+      
+      // Build printStatus object without undefined values
+      const printStatusUpdate: any = {
+        status: printStatus.status,
+        reviewedBy: printStatus.reviewedBy,
+        reviewedAt: new Date().toISOString(),
+      };
+      
+      // Only include comment if it has a value
+      if (printStatus.comment && printStatus.comment.trim()) {
+        printStatusUpdate.comment = printStatus.comment;
+      }
+      
+      batch.update(cardRef, {
+        printStatus: printStatusUpdate,
+        updatedAt: serverTimestamp(),
+      });
+    });
+    
+    await batch.commit();
+  },
+
   // Get cards by column and board
   getCardsByColumn: async (column: ColumnId, boardId?: string): Promise<Card[]> => {
     let q;
@@ -428,6 +563,7 @@ export const cardService = {
         boardId: data.boardId || DEFAULT_BOARD_ID, // Migration support
         customFields: data.customFields || {}, // Custom field values
         editingStatus: data.editingStatus, // Include edit lock status
+        printStatus: data.printStatus, // Include print status
         createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
         updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt || data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
         metadata: data.metadata,

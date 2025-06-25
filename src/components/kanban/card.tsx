@@ -14,7 +14,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Badge } from '@/components/ui/badge';
-import { Languages, Clock, Eye, UserPlus, UserMinus, MoreVertical, Lock } from 'lucide-react';
+import { Languages, Clock, Eye, UserMinus, MoreVertical, Lock } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useAuth } from '@/hooks/use-auth';
 import { editLockService } from '@/lib/firestore';
@@ -26,6 +26,7 @@ import { collection, getDocs, query, where } from 'firebase/firestore';
 import { firestore } from '@/lib/firebase';
 import { cardService } from '@/lib/firestore';
 import { toast } from '@/hooks/use-toast';
+import { PrintStatusBadge } from "@/components/ui/print-status-badge";
 
 interface KanbanCardProps {
   card: Card;
@@ -135,10 +136,22 @@ export const KanbanCard = React.memo(function KanbanCard({
           where('role', 'in', ['Admin', 'Editor'])
         );
         const usersSnapshot = await getDocs(usersQuery);
-        const usersData = usersSnapshot.docs.map(doc => ({
+        let usersData = usersSnapshot.docs.map(doc => ({
           uid: doc.id,
           ...doc.data()
         })) as User[];
+        
+        // Add "For Review" option for print column cards
+        if (card.column === 'print') {
+          const forReviewUser = {
+            uid: 'for-review',
+            name: 'For Review',
+            email: 'review@system.com',
+            avatarUrl: 'https://placehold.co/40x40/fbbf24/000000?text=FR',
+            role: 'Admin' as const,
+          };
+          usersData = [forReviewUser, ...usersData];
+        }
         
         setAvailableUsers(usersData);
       } catch (error) {
@@ -147,7 +160,7 @@ export const KanbanCard = React.memo(function KanbanCard({
     };
 
     fetchEligibleUsers();
-  }, [canAssign]);
+  }, [canAssign, card.column]);
 
   const handleTranslationClick = useCallback(() => {
     if (onTranslationClick) {
@@ -264,6 +277,13 @@ export const KanbanCard = React.memo(function KanbanCard({
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
+              )}
+              {/* Print Status Badge for cards in print column */}
+              {card.column === 'print' && (
+                <PrintStatusBadge 
+                  printStatus={card.printStatus} 
+                  assigneeUid={card.assigneeUid}
+                />
               )}
             </div>
             <CardTitle className="text-base font-bold font-body">

@@ -24,6 +24,7 @@ import { BoardSelector } from './board-selector';
 import { CustomFieldsManager } from './custom-fields-manager';
 import { ColumnManager } from './column-manager';
 import { LiveView } from './live-view';
+import { PrintView } from './print-view';
 import { BoardTranslationSettings } from '../forms/board-translation-settings';
 import type { Card, ColumnId, ColumnData, User, Board, ColumnDefinition } from '@/lib/types';
 import { TranslationModal } from './translation-modal';
@@ -161,7 +162,7 @@ export function KanbanBoard({ selectedBoardId }: KanbanBoardProps) {
   const [isFilterExpanded, setIsFilterExpanded] = useState(false);
   const [sortBy, setSortBy] = useState<SortOption>('created');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
-  const [viewMode, setViewMode] = useState<'kanban' | 'live'>('kanban'); // Default to Live view
+  const [viewMode, setViewMode] = useState<'kanban' | 'live' | 'print'>('kanban'); // Added print view
   
   // Then custom hooks
   const { user } = useAuth();
@@ -658,7 +659,7 @@ export function KanbanBoard({ selectedBoardId }: KanbanBoardProps) {
   }, [user, selectedBoardId]);
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full" style={{ paddingBottom: '100px' }}>
       {/* Board Selector and Toolbar */}
       <div className="mb-6 space-y-4">
         <div className="flex items-center justify-between">
@@ -687,6 +688,15 @@ export function KanbanBoard({ selectedBoardId }: KanbanBoardProps) {
                 >
                   <List className="h-4 w-4 mr-1" />
                   Live
+                </Button>
+                <Button
+                  variant={viewMode === 'print' ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => setViewMode('print')}
+                  className="rounded-none border-r"
+                >
+                  <List className="h-4 w-4 mr-1" />
+                  Print
                 </Button>
                 <Button
                   variant={viewMode === 'kanban' ? "default" : "ghost"}
@@ -1001,6 +1011,16 @@ export function KanbanBoard({ selectedBoardId }: KanbanBoardProps) {
           <LiveView 
             cards={processedCards} 
             onCardClick={handleCardClick}
+          />
+        ) : viewMode === 'print' ? (
+          // Print View
+          <PrintView 
+            cards={processedCards} 
+            users={users}
+            onCardUpdate={() => {
+              // Trigger re-fetch of cards to update status badges
+              window.location.reload(); // Simple reload for now, can be optimized later
+            }}
           />
         ) : (
           // Kanban View
