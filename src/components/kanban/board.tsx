@@ -519,35 +519,79 @@ export function KanbanBoard({ selectedBoardId }: KanbanBoardProps) {
       try {
         await boardService.ensureDefaultBoard();
         await seedMockData();
-        
-        if (selectedBoardId && user) {
-          const board = await boardService.getBoard(selectedBoardId);
-          if (board) {
-            const hasAccess = await boardService.hasAccess(selectedBoardId, user.uid, user.role);
-            if (hasAccess) {
-              setCurrentBoard(board);
-            } else {
-    toast({
-                variant: 'destructive',
-                title: 'Access Denied',
-                description: 'You do not have access to this board.'
-              });
-            }
-          }
-        }
       } catch (error) {
         console.error('Error initializing boards:', error);
       }
     };
 
     initializeBoards();
-  }, [selectedBoardId, user, toast]);
+  }, []);
+
+  // Handle selectedBoardId changes - this should run when URL changes
+  useEffect(() => {
+    if (!user || !selectedBoardId) {
+      console.log('Board loading: Skipping - user:', !!user, 'selectedBoardId:', selectedBoardId);
+      return;
+    }
+
+    console.log('Board loading: Loading specific board:', selectedBoardId);
+
+    const loadSpecificBoard = async () => {
+      try {
+        console.log('Board loading: Fetching board data...');
+        const board = await boardService.getBoard(selectedBoardId);
+        if (board) {
+          console.log('Board loading: Board found:', board.name, board.id);
+          const hasAccess = await boardService.hasAccess(selectedBoardId, user.uid, user.role);
+          if (hasAccess) {
+            console.log('Board loading: Access granted, setting current board');
+            setCurrentBoard(board);
+          } else {
+            console.log('Board loading: Access denied');
+            toast({
+              variant: 'destructive',
+              title: 'Access Denied',
+              description: 'You do not have access to this board.'
+            });
+            // Redirect to default board
+            router.push('/');
+          }
+        } else {
+          console.log('Board loading: Board not found');
+          toast({
+            variant: 'destructive',
+            title: 'Board Not Found',
+            description: 'The requested board could not be found.'
+          });
+          // Redirect to default board
+          router.push('/');
+        }
+      } catch (error) {
+        console.error('Error loading specific board:', error);
+        toast({
+          variant: 'destructive',
+          title: 'Error',
+          description: 'Failed to load the requested board.'
+        });
+      }
+    };
+
+    loadSpecificBoard();
+  }, [selectedBoardId, user, toast, router]);
 
   // Subscribe to board, cards and users
   useEffect(() => {
-    if (!user || !selectedBoardId) {
+    if (!user) {
+      console.log('Board subscription: No user, skipping');
       return;
     }
+
+    if (!selectedBoardId) {
+      console.log('Board subscription: No selectedBoardId, skipping');
+      return;
+    }
+
+    console.log('Board subscription: Setting up subscriptions for board:', selectedBoardId);
 
     let unsubscribeBoard: (() => void) | undefined;
     let unsubscribeCards: (() => void) | undefined;
@@ -557,16 +601,17 @@ export function KanbanBoard({ selectedBoardId }: KanbanBoardProps) {
       // Subscribe to board for real-time updates
       unsubscribeBoard = boardService.subscribeToBoard(selectedBoardId, (board) => {
         if (board) {
-          console.log('Board updated via subscription:', board);
+          console.log('Board updated via subscription:', board.name, board.id);
           setCurrentBoard(board);
         } else {
-          console.log('Board not found or deleted');
+          console.log('Board not found or deleted via subscription');
           setCurrentBoard(null);
         }
       });
 
       // Subscribe to cards
       unsubscribeCards = cardService.subscribeToCards(selectedBoardId, (cards) => {
+        console.log('Cards updated via subscription:', cards.length, 'cards for board', selectedBoardId);
         setAllCards(cards);
       });
 
@@ -585,6 +630,7 @@ export function KanbanBoard({ selectedBoardId }: KanbanBoardProps) {
     }
 
     return () => {
+      console.log('Board subscription: Cleaning up subscriptions');
       if (typeof unsubscribeBoard === 'function') {
         try {
           unsubscribeBoard();
@@ -619,6 +665,7 @@ export function KanbanBoard({ selectedBoardId }: KanbanBoardProps) {
           <BoardSelector
             currentBoard={currentBoard}
             onBoardChange={handleBoardChange}
+            preventAutoSelect={!!selectedBoardId}
           />
           
           {/* Toolbar - Right Side */}

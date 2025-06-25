@@ -658,6 +658,7 @@ export const boardService = {
           settings: data.settings || {},
           customFieldDefinitions: data.customFieldDefinitions || [],
           columnDefinitions: data.columnDefinitions || [],
+          translationSettings: data.translationSettings,
           createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
           updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt || data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
         };
@@ -698,8 +699,10 @@ export const boardService = {
         creatorUid: data.creatorUid,
         isDefault: data.isDefault,
         sharedWith: data.sharedWith || [],
-        customFieldDefinitions: data.customFieldDefinitions || [],
         settings: data.settings || {},
+        customFieldDefinitions: data.customFieldDefinitions || [],
+        columnDefinitions: data.columnDefinitions || [],
+        translationSettings: data.translationSettings,
         createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
         updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt || data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
       };
@@ -732,8 +735,10 @@ export const boardService = {
             creatorUid: data.creatorUid,
             isDefault: data.isDefault,
             sharedWith: data.sharedWith || [],
-            customFieldDefinitions: data.customFieldDefinitions || [],
             settings: data.settings || {},
+            customFieldDefinitions: data.customFieldDefinitions || [],
+            columnDefinitions: data.columnDefinitions || [],
+            translationSettings: data.translationSettings,
             createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
             updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt || data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
           });
@@ -1037,6 +1042,7 @@ export const boardService = {
           settings: data.settings || {},
           customFieldDefinitions: data.customFieldDefinitions || [],
           columnDefinitions: data.columnDefinitions || [],
+          translationSettings: data.translationSettings,
           createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
           updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt || data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
         };

@@ -268,9 +268,10 @@ function BoardSettingsForm({ board, onUpdate, onClose }: BoardSettingsFormProps)
 interface BoardSelectorProps {
   currentBoard: Board | null;
   onBoardChange: (board: Board) => void;
+  preventAutoSelect?: boolean;
 }
 
-export function BoardSelector({ currentBoard, onBoardChange }: BoardSelectorProps) {
+export function BoardSelector({ currentBoard, onBoardChange, preventAutoSelect }: BoardSelectorProps) {
   const { user } = useAuth();
   const [boards, setBoards] = useState<Board[]>([]);
   const [availableUsers, setAvailableUsers] = useState<User[]>([]);
@@ -297,8 +298,11 @@ export function BoardSelector({ currentBoard, onBoardChange }: BoardSelectorProp
         const userBoards = await boardService.getUserBoards(user.uid, user.role);
         setBoards(userBoards);
         
-        // If no current board selected, select the first available or default
-        if (!currentBoard && userBoards.length > 0) {
+        // Only auto-select if:
+        // 1. preventAutoSelect is not true
+        // 2. No current board is selected
+        // 3. We have boards available
+        if (!preventAutoSelect && !currentBoard && userBoards.length > 0) {
           const defaultBoard = userBoards.find(b => b.isDefault) || userBoards[0];
           onBoardChange(defaultBoard);
         }
@@ -315,7 +319,7 @@ export function BoardSelector({ currentBoard, onBoardChange }: BoardSelectorProp
     };
 
     fetchBoards();
-  }, [user, currentBoard, onBoardChange]);
+  }, [user, currentBoard, onBoardChange, preventAutoSelect]);
 
   // Fetch users for sharing
   useEffect(() => {
