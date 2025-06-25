@@ -6,13 +6,35 @@ import { KanbanBoard } from '@/components/kanban/board';
 import { Button } from '@/components/ui/button';
 import { BookOpenCheck, AlertTriangle, Settings } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { useSearchParams } from 'next/navigation';
-import { Suspense } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
+import { Suspense, useEffect } from 'react';
 
 // Separate component for the board selection logic
 function BoardSelector() {
   const searchParams = useSearchParams();
+  const router = useRouter();
+  const { user, loading } = useAuth();
   const selectedBoardId = searchParams.get('board');
+  
+  // Redirect to boards page if no board is selected and user is authenticated
+  useEffect(() => {
+    if (!loading && user && !selectedBoardId) {
+      console.log('No board selected, redirecting to boards page');
+      router.push('/boards');
+    }
+  }, [user, loading, selectedBoardId, router]);
+  
+  // Don't render the board if we're redirecting
+  if (!loading && user && !selectedBoardId) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <BookOpenCheck className="h-8 w-8 animate-pulse text-primary mx-auto mb-2" />
+          <p className="text-muted-foreground">Redirecting to boards...</p>
+        </div>
+      </div>
+    );
+  }
   
   return <KanbanBoard selectedBoardId={selectedBoardId} />;
 }

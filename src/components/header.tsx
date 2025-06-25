@@ -12,7 +12,23 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { BookOpenCheck, LogOut, Shield, Home, Grid3X3, FileText, MapPin } from 'lucide-react';
+import { 
+  BookOpenCheck, 
+  LogOut, 
+  Shield, 
+  SquareKanban,
+  Home, 
+  Grip,
+  Grid3X3, 
+  FileText, 
+  MapPin,
+  MoreHorizontal,
+  Calendar,
+  Users,
+  Settings,
+  BarChart3,
+  Database
+} from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 
@@ -26,11 +42,6 @@ export function Header() {
   }
 
   const isAdmin = user.role === 'Admin';
-  const isOnAdminPage = pathname === '/admin';
-  const isOnBoardsPage = pathname === '/boards';
-  const isOnHomePage = pathname === '/';
-  const isOnFormsPage = pathname.startsWith('/forms');
-  const isOnCentersPage = pathname.startsWith('/centers');
 
   const getInitials = (name: string) => {
     return name
@@ -48,151 +59,125 @@ export function Header() {
     }
   };
 
+  // App menu items
+  const appMenuItems = [
+    {
+      href: '/boards',
+      icon: SquareKanban,
+      label: 'All Boards',
+      description: 'Manage your boards',
+      color: 'text-blue-600'
+    },
+    {
+      href: '/forms',
+      icon: FileText,
+      label: 'Forms',
+      description: 'Form management',
+      color: 'text-purple-600'
+    },
+    {
+      href: '/centers',
+      icon: MapPin,
+      label: 'Centers',
+      description: 'Satsang centers',
+      color: 'text-orange-600'
+    },
+    ...(isAdmin ? [{
+      href: '/admin',
+      icon: Shield,
+      label: 'Admin',
+      description: 'System administration',
+      color: 'text-red-600'
+    }] : [])
+  ];
+
   return (
     <header className="flex h-16 items-center justify-between border-b bg-card px-4 md:px-6">
       <div className="flex items-center gap-3">
         <img src="/logo.png" alt="DadaBhagwan Logo" className="h-8 w-8" />
-        <Link href="/" className="hover:opacity-80 transition-opacity">
+        <Link href="/boards" className="hover:opacity-80 transition-opacity">
           <h1 className="text-xl font-bold font-headline text-foreground">DadaBhagwan - Gujarati Question Workflow</h1>
         </Link>
       </div>
 
-      <div className="flex items-center gap-4">
-        {/* Navigation */}
-        <div className="flex items-center gap-2">
-          {/* Boards Page Link */}
-          {!isOnBoardsPage && (
-            <Button variant="outline" size="sm" asChild>
-              <Link href="/boards" className="flex items-center gap-2">
-                <Grid3X3 className="h-4 w-4" />
-                All Boards
-              </Link>
+      <div className="flex items-center gap-3">
+        {/* Apps Menu */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="sm" className="flex items-center gap-2 px-3">
+              <Grip className="h-5 w-5" />
+              <span className="font-medium">All Apps</span>
             </Button>
-          )}
-          
-          {/* Forms Page Link */}
-          {!isOnFormsPage && (
-            <Button variant="outline" size="sm" asChild>
-              <Link href="/forms" className="flex items-center gap-2">
-                <FileText className="h-4 w-4" />
-                Forms
-              </Link>
-            </Button>
-          )}
-          
-          {/* Centers Page Link */}
-          {!isOnCentersPage && (
-            <Button variant="outline" size="sm" asChild>
-              <Link href="/centers" className="flex items-center gap-2">
-                <MapPin className="h-4 w-4" />
-                Centers
-              </Link>
-            </Button>
-          )}
-          
-          {/* Home Page Link */}
-          {!isOnHomePage && (
-            <Button variant="outline" size="sm" asChild>
-              <Link href="/" className="flex items-center gap-2">
-                <Home className="h-4 w-4" />
-                Kanban Board
-              </Link>
-            </Button>
-          )}
-          
-          {/* Admin Navigation */}
-          {isAdmin && !isOnAdminPage && (
-            <Button variant="outline" size="sm" asChild>
-              <Link href="/admin" className="flex items-center gap-2">
-                <Shield className="h-4 w-4" />
-                Admin Dashboard
-              </Link>
-            </Button>
-          )}
-        </div>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-80 p-4">
+            <DropdownMenuLabel className="text-center pb-3">
+              <span className="text-lg font-semibold">DadaBhagwan Apps</span>
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator className="mb-4" />
+            
+            {/* App Grid */}
+            <div className="grid grid-cols-3 gap-3">
+              {appMenuItems.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className="flex flex-col items-center p-3 rounded-lg hover:bg-muted transition-colors group"
+                  >
+                    <div className="mb-2 p-2 rounded-full bg-muted group-hover:bg-background transition-colors">
+                      <Icon className={`h-6 w-6 ${item.color}`} />
+                    </div>
+                    <span className="text-sm font-medium text-center">{item.label}</span>
+                    <span className="text-xs text-muted-foreground text-center mt-1">{item.description}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          </DropdownMenuContent>
+        </DropdownMenu>
 
         {/* User Dropdown */}
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="ghost" className="relative h-10 w-10 rounded-full">
-            <Avatar className="h-10 w-10">
-              <AvatarImage src={user.avatarUrl} alt={user.name} data-ai-hint="user avatar" />
-              <AvatarFallback>{getInitials(user.name)}</AvatarFallback>
-            </Avatar>
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent className="w-56" align="end" forceMount>
-          <DropdownMenuLabel className="font-normal">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" className="relative h-10 w-10 rounded-full">
+              <Avatar className="h-10 w-10">
+                <AvatarImage src={user.avatarUrl} alt={user.name} data-ai-hint="user avatar" />
+                <AvatarFallback>{getInitials(user.name)}</AvatarFallback>
+              </Avatar>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent className="w-56" align="end" forceMount>
+            <DropdownMenuLabel className="font-normal">
               <div className="flex flex-col space-y-2">
-              <p className="text-sm font-medium leading-none">{user.name}</p>
-              <p className="text-xs leading-none text-muted-foreground">{user.email}</p>
+                <p className="text-sm font-medium leading-none">{user.name}</p>
+                <p className="text-xs leading-none text-muted-foreground">{user.email}</p>
                 <Badge className={getRoleColor(user.role)} variant="outline">
                   {user.role}
                 </Badge>
-            </div>
-          </DropdownMenuLabel>
-          <DropdownMenuSeparator />
-            
-            {/* All Boards Link */}
-            {!isOnBoardsPage && (
-              <DropdownMenuItem asChild>
-                <Link href="/boards" className="flex items-center">
-                  <Grid3X3 className="mr-2 h-4 w-4" />
-                  <span>All Boards</span>
-                </Link>
-              </DropdownMenuItem>
-            )}
-            
-            {/* Forms Link */}
-            {!isOnFormsPage && (
-              <DropdownMenuItem asChild>
-                <Link href="/forms" className="flex items-center">
-                  <FileText className="mr-2 h-4 w-4" />
-                  <span>Forms</span>
-                </Link>
-              </DropdownMenuItem>
-            )}
-            
-            {/* Centers Link */}
-            {!isOnCentersPage && (
-              <DropdownMenuItem asChild>
-                <Link href="/centers" className="flex items-center">
-                  <MapPin className="mr-2 h-4 w-4" />
-                  <span>Centers</span>
-                </Link>
-              </DropdownMenuItem>
-            )}
-            
-            {/* Kanban Board Link */}
-            {!isOnHomePage && (
-              <DropdownMenuItem asChild>
-                <Link href="/" className="flex items-center">
-                  <Home className="mr-2 h-4 w-4" />
-                  <span>Kanban Board</span>
-                </Link>
-              </DropdownMenuItem>
-            )}
+              </div>
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
             
             {/* Admin Dashboard Link */}
-            {isAdmin && !isOnAdminPage && (
-              <DropdownMenuItem asChild>
-                <Link href="/admin" className="flex items-center">
-                  <Shield className="mr-2 h-4 w-4" />
-                  <span>Admin Dashboard</span>
-                </Link>
-              </DropdownMenuItem>
+            {isAdmin && (
+              <>
+                <DropdownMenuItem asChild>
+                  <Link href="/admin" className="flex items-center">
+                    <Shield className="mr-2 h-4 w-4" />
+                    <span>Admin Dashboard</span>
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+              </>
             )}
             
-            {((!isOnBoardsPage) || (!isOnHomePage) || (!isOnFormsPage) || (!isOnCentersPage) || (isAdmin && !isOnAdminPage)) && (
-              <DropdownMenuSeparator />
-            )}
-
-          <DropdownMenuItem onClick={logout}>
-            <LogOut className="mr-2 h-4 w-4" />
-            <span>Log out</span>
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+            <DropdownMenuItem onClick={logout}>
+              <LogOut className="mr-2 h-4 w-4" />
+              <span>Log out</span>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </header>
   );

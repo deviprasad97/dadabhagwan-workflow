@@ -28,7 +28,7 @@ export const KanbanColumn = React.memo(function KanbanColumn({
     id: column.id,
     disabled: !canDrop,
   });
-
+  
   return (
     <div
       ref={setNodeRef}
@@ -61,14 +61,14 @@ export const KanbanColumn = React.memo(function KanbanColumn({
             const assignee = card.assigneeUid ? users[card.assigneeUid] : undefined;
             
             return (
-              <KanbanCard
-                key={card.id}
-                card={card}
+          <KanbanCard
+            key={card.id}
+            card={card}
                 user={creator}
                 assignee={assignee}
-                openTranslationModal={openTranslationModal}
+            openTranslationModal={openTranslationModal}
                 onCardClick={onCardClick}
-              />
+          />
             );
           })}
         </SortableContext>

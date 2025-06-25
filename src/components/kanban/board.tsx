@@ -568,7 +568,7 @@ export function KanbanBoard({ selectedBoardId }: KanbanBoardProps) {
         }
       } catch (error) {
         console.error('Error loading specific board:', error);
-        toast({
+    toast({
           variant: 'destructive',
           title: 'Error',
           description: 'Failed to load the requested board.'

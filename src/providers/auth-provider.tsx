@@ -12,6 +12,7 @@ import {
 import { auth, googleProvider } from '@/lib/firebase';
 import { userService } from '@/lib/firestore';
 import { useToast } from '@/hooks/use-toast';
+import { useRouter } from 'next/navigation';
 
 interface AuthContextType {
   user: User | null;
@@ -28,6 +29,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [firebaseConfigured, setFirebaseConfigured] = useState(false);
   const { toast } = useToast();
+  const router = useRouter();
 
   useEffect(() => {
     // Check if Firebase is properly configured
@@ -106,6 +108,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
           
           setUser(appUser);
+          
+          // Redirect to boards page after successful authentication
+          // Only redirect if we're currently on the home page without a board parameter
+          if (window.location.pathname === '/' && !window.location.search.includes('board=')) {
+            console.log('Redirecting user to boards page after login');
+            router.push('/boards');
+          }
+          
         } catch (error) {
           console.error('Error handling user authentication:', error);
           // Fallback: create user with basic info
@@ -117,6 +127,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             role: 'Viewer',
           };
           setUser(fallbackUser);
+          
+          // Redirect to boards page even for fallback users
+          if (window.location.pathname === '/' && !window.location.search.includes('board=')) {
+            console.log('Redirecting fallback user to boards page after login');
+            router.push('/boards');
+          }
         }
       } else {
         // If no user is found, set the user to null.
@@ -129,7 +145,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // Cleanup the subscription when the component unmounts.
     return () => unsubscribe();
-  }, [toast]);
+  }, [toast, router]);
 
   const login = async () => {
     if (!firebaseConfigured) {
