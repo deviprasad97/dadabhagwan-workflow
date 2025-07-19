@@ -287,6 +287,30 @@ export const seedMockData = async (): Promise<void> => {
   }
 };
 
+// Utility function to recursively clean undefined values from objects
+const cleanFirestoreData = (obj: any): any => {
+  if (obj === null || obj === undefined) {
+    return null;
+  }
+  
+  if (Array.isArray(obj)) {
+    return obj.map(item => cleanFirestoreData(item)).filter(item => item !== undefined);
+  }
+  
+  if (typeof obj === 'object' && obj.constructor === Object) {
+    const cleaned: any = {};
+    for (const [key, value] of Object.entries(obj)) {
+      const cleanedValue = cleanFirestoreData(value);
+      if (cleanedValue !== undefined) {
+        cleaned[key] = cleanedValue;
+      }
+    }
+    return cleaned;
+  }
+  
+  return obj;
+};
+
 // Card operations
 export const cardService = {
   // Get all cards with real-time updates (filtered by board)
@@ -361,7 +385,10 @@ export const cardService = {
         updatedAt: new Date().toISOString()
       };
       
-      await updateDoc(cardRef, updateData);
+      // Clean undefined values to prevent Firestore errors
+      const cleanedUpdateData = cleanFirestoreData(updateData);
+      
+      await updateDoc(cardRef, cleanedUpdateData);
       console.log('Card updated successfully:', cardId);
     } catch (error) {
       console.error('Error updating card:', error);
