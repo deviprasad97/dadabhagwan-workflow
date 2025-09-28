@@ -468,6 +468,7 @@ export const cardService = {
 const callGoogleCloudFunction = async (submission: FormSubmission, form: Form): Promise<void> => {
   // Default Cloud Function URL - this should be configured via environment variables
   const cloudFunctionUrl = process.env.NEXT_PUBLIC_GOOGLE_CLOUD_FUNCTION_URL || 'https://your-cloud-function-url/processFormSubmission';
+  console.log('Cloud Function URL:', cloudFunctionUrl);
   
   try {
     // Transform form submission data to match your Cloud Function's expected format
@@ -1502,6 +1503,46 @@ export const formService = {
     return forms.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
   },
 
+  // Fix board integration for forms that have boardId but missing boardIntegration
+  fixBoardIntegration: async (formId: string): Promise<void> => {
+    const form = await formService.getForm(formId);
+    if (!form) {
+      console.error('Form not found:', formId);
+      return;
+    }
+
+    // If form has boardId but missing or incomplete boardIntegration, fix it
+    if (form.boardId && (!form.boardIntegration || !form.boardIntegration.enabled)) {
+      console.log('Fixing board integration for form:', formId);
+      
+      const defaultIntegration: BoardIntegration = {
+        enabled: true,
+        boardId: form.boardId,
+        autoCreateCards: true,
+        defaultColumn: 'online_submitted',
+        fieldMapping: {
+          titleField: 'english-question',
+          contentField: 'english-question',
+          priorityField: 'status',
+          categoryField: 'status'
+        },
+        cardTemplate: {
+          titlePrefix: '',
+          contentFormat: '{content}',
+          defaultPriority: 'Medium'
+        }
+      };
+
+      await formService.updateForm(formId, {
+        boardIntegration: defaultIntegration
+      });
+      
+      console.log('Board integration fixed for form:', formId);
+    } else {
+      console.log('Form already has proper board integration:', formId);
+    }
+  },
+
   // Get forms for a specific board
   getBoardForms: async (boardId: string): Promise<Form[]> => {
     const q = query(
@@ -1545,11 +1586,22 @@ export const formService = {
       updatedAt: serverTimestamp(),
     };
 
-    // Only include defined values
+    // Only include defined values and clean nested objects
     Object.keys(updates).forEach(key => {
-      if (updates[key as keyof typeof updates] !== undefined) {
-        cleanUpdateData[key] = updates[key as keyof typeof updates];
+      const value = updates[key as keyof typeof updates];
+      if (value !== undefined) {
+        // Clean nested objects to remove undefined values
+        cleanUpdateData[key] = cleanFirestoreData(value);
       }
+    });
+
+    console.log('Updating form with data:', {
+      formId,
+      updates,
+      cleanUpdateData,
+      hasBoardIntegration: !!updates.boardIntegration,
+      boardIntegrationEnabled: updates.boardIntegration?.enabled,
+      autoCreateCards: updates.boardIntegration?.autoCreateCards
     });
 
     await updateDoc(formRef, cleanUpdateData);
@@ -1659,7 +1711,29 @@ export const formService = {
 
     // Auto-create card via Google Cloud Function if board integration is enabled
     try {
-      const form = await formService.getForm(submission.formId);
+      let form = await formService.getForm(submission.formId);
+      console.log('Form submission - checking board integration:', {
+        formId: submission.formId,
+        hasForm: !!form,
+        boardIntegrationEnabled: form?.boardIntegration?.enabled,
+        autoCreateCards: form?.boardIntegration?.autoCreateCards,
+        hasBoardId: !!form?.boardId,
+        boardId: form?.boardId,
+        fullBoardIntegration: form?.boardIntegration
+      });
+      
+      // Auto-fix board integration if form has boardId but missing boardIntegration
+      if (form && form.boardId && (!form.boardIntegration || !form.boardIntegration.enabled)) {
+        console.log('Auto-fixing board integration for form:', submission.formId);
+        await formService.fixBoardIntegration(submission.formId);
+        // Refetch the form with updated integration
+        form = await formService.getForm(submission.formId);
+        console.log('Board integration fixed, refetched form:', {
+          boardIntegrationEnabled: form?.boardIntegration?.enabled,
+          autoCreateCards: form?.boardIntegration?.autoCreateCards
+        });
+      }
+      
       if (form?.boardIntegration?.enabled && form.boardIntegration.autoCreateCards && form.boardId) {
         const fullSubmission: FormSubmission = {
           id: docRef.id,
@@ -1669,7 +1743,10 @@ export const formService = {
         };
         
         // Call Google Cloud Function to create card
+        console.log('Calling Google Cloud Function to create card');
         await callGoogleCloudFunction(fullSubmission, form);
+      } else {
+        console.log('Board integration conditions not met - skipping Google Cloud Function call');
       }
     } catch (error) {
       console.error('Error calling Google Cloud Function for card creation:', error);
@@ -2067,6 +2144,7 @@ export const boardIntegrationService = {
   // Associate form with board and set up integration
   associateFormWithBoard: async (formId: string, boardId: string, integration: BoardIntegration): Promise<void> => {
     const formRef = doc(firestore, 'forms', formId);
+    console.log('Associating form with board:', { formId, boardId, integration });
     await updateDoc(formRef, {
       boardId,
       boardIntegration: integration,
@@ -2175,6 +2253,59 @@ Category: ${categoryValue}`;
     }
 
     return processedCount;
+  },
+
+  // Fix all forms with boardId but missing boardIntegration
+  fixAllFormsWithMissingIntegration: async (): Promise<{ fixed: number; total: number }> => {
+    console.log('Scanning all forms for missing board integration...');
+    
+    // Get all forms that have a boardId
+    const allFormsQuery = query(
+      collection(firestore, 'forms'),
+      where('boardId', '!=', null)
+    );
+    
+    const snapshot = await getDocs(allFormsQuery);
+    let totalForms = 0;
+    let fixedForms = 0;
+    
+    for (const doc of snapshot.docs) {
+      const data = doc.data();
+      totalForms++;
+      
+      // Check if boardIntegration is missing or disabled
+      if (!data.boardIntegration || !data.boardIntegration.enabled) {
+        console.log(`Fixing form ${doc.id} with boardId: ${data.boardId}`);
+        
+        const defaultIntegration: BoardIntegration = {
+          enabled: true,
+          boardId: data.boardId,
+          autoCreateCards: true,
+          defaultColumn: 'online_submitted',
+          fieldMapping: {
+            titleField: 'english-question',
+            contentField: 'english-question',
+            priorityField: 'status',
+            categoryField: 'status'
+          },
+          cardTemplate: {
+            titlePrefix: '',
+            contentFormat: '{content}',
+            defaultPriority: 'Medium'
+          }
+        };
+
+        await updateDoc(doc.ref, {
+          boardIntegration: defaultIntegration,
+          updatedAt: serverTimestamp(),
+        });
+        
+        fixedForms++;
+      }
+    }
+    
+    console.log(`Fixed ${fixedForms} out of ${totalForms} forms`);
+    return { fixed: fixedForms, total: totalForms };
   },
 
   // Get forms associated with a board
