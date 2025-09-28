@@ -4,8 +4,8 @@ import { AuthProvider } from '@/providers/auth-provider';
 import { Toaster } from '@/components/ui/toaster';
 
 export const metadata: Metadata = {
-  title: 'DadaBhagwan - Gujarati Question Workflow',
-  description: 'DadaBhagwan - Gujarati Question Workflow',
+  title: 'Ask Pujyashree',
+  description: 'Ask Pujyashree',
 };
 
 export default function RootLayout({

@@ -96,7 +96,7 @@ export function Header() {
       <div className="flex items-center gap-3">
         <img src="/logo.png" alt="DadaBhagwan Logo" className="h-8 w-8" />
         <Link href="/boards" className="hover:opacity-80 transition-opacity">
-          <h1 className="text-xl font-bold font-headline text-foreground">DadaBhagwan - Gujarati Question Workflow</h1>
+          <h1 className="text-xl font-bold font-headline text-foreground">Ask Pujyashree</h1>
         </Link>
       </div>
 
